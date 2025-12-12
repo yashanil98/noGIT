@@ -1,0 +1,90 @@
+{
+  "name": "nogit",
+  "displayName": "noGit - Local History Timeline",
+  "description": "Lightweight local snapshot history with a Google Docs\u2013style timeline for small projects.",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:nogit.showTimeline",
+    "onCommand:nogit.snapshotNow"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "nogit.showTimeline",
+        "title": "noGit: Show Timeline"
+      },
+      {
+        "command": "nogit.snapshotNow",
+        "title": "noGit: Snapshot Now"
+      }
+    ],
+    "configuration": {
+      "title": "noGit",
+      "properties": {
+        "nogit.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable autosnapshots."
+        },
+        "nogit.snapshotIntervalMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "Interval in minutes between autosnapshots."
+        },
+        "nogit.maxSnapshots": {
+          "type": "number",
+          "default": 48,
+          "minimum": 1,
+          "description": "Maximum snapshots to keep (oldest pruned)."
+        },
+        "nogit.snapshotFolderName": {
+          "type": "string",
+          "default": ".nogit",
+          "description": "Folder inside workspace where snapshots are stored."
+        },
+        "nogit.includeUnstagedOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "Snapshot only files modified since the last snapshot."
+        },
+        "nogit.excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/.git/**",
+            "**/.nogit/**",
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/out/**"
+          ],
+          "description": "Glob patterns to exclude from snapshots (basic filtering)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "watch:tsc": "tsc -w -p .",
+    "watch:esbuild": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "compile": "tsc -p ."
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^20.11.30",
+    "esbuild": "^0.21.5",
+    "@types/vscode": "^1.85.0"
+  },
+  "dependencies": {}
+}
