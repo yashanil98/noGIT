@@ -1,0 +1,16 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" rx="24" fill="#1f2937"/>
+  <!-- vertical timeline rail -->
+  <rect x="40" y="24" width="4" height="80" rx="2" fill="#3b82f6"/>
+  <!-- snapshot nodes -->
+  <circle cx="42" cy="34" r="9" fill="#60a5fa"/>
+  <circle cx="42" cy="64" r="9" fill="#60a5fa"/>
+  <circle cx="42" cy="94" r="9" fill="#60a5fa"/>
+  <!-- file rows next to each node -->
+  <rect x="62" y="29" width="40" height="6" rx="3" fill="#e5e7eb"/>
+  <rect x="62" y="40" width="26" height="6" rx="3" fill="#9ca3af"/>
+  <rect x="62" y="59" width="40" height="6" rx="3" fill="#e5e7eb"/>
+  <rect x="62" y="70" width="30" height="6" rx="3" fill="#9ca3af"/>
+  <rect x="62" y="89" width="40" height="6" rx="3" fill="#e5e7eb"/>
+  <rect x="62" y="100" width="22" height="6" rx="3" fill="#9ca3af"/>
+</svg>

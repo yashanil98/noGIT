@@ -7,3 +7,5 @@ node_modules/**
 tsconfig.json
 **/*.map
 **/*.ts
+**/*.svg
+*.vsix
