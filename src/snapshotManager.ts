@@ -17,7 +17,7 @@ export class SnapshotManager {
     this.context = context;
     this.workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!this.workspaceFolder) {
-      vscode.window.showWarningMessage('noGit: Open a folder/workspace to enable snapshots.');
+      vscode.window.showWarningMessage('noGIT: Open a folder/workspace to enable snapshots.');
       return;
     }
 
@@ -77,7 +77,7 @@ export class SnapshotManager {
         await fs.writeFile(dest, data);
         copied.push(rel);
       } catch (err) {
-        console.error('noGit copy failed for', rel, err);
+        console.error('noGIT copy failed for', rel, err);
       }
     }
 
@@ -89,7 +89,7 @@ export class SnapshotManager {
     await this.pruneOldSnapshots();
 
     // notify
-    vscode.window.setStatusBarMessage(`noGit snapshot saved (${copied.length} files)`, 3000);
+    vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied.length} files)`, 3000);
   }
 
   public async listSnapshots(): Promise<SnapshotInfo[]> {

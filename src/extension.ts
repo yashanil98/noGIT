@@ -6,7 +6,7 @@ import { TimelinePanel } from './timelinePanel';
 let snapshotMgr: SnapshotManager | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('noGit activated');
+  console.log('noGIT activated');
 
   snapshotMgr = new SnapshotManager(context);
   snapshotMgr.start();

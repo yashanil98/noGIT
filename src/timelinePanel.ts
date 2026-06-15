@@ -29,7 +29,7 @@ export class TimelinePanel {
     const snapshots = await snapMgr.listSnapshots();
     const panel = vscode.window.createWebviewPanel(
       'nogitTimeline',
-      'noGit Timeline',
+      'noGIT Timeline',
       vscode.ViewColumn.Two,
       { enableScripts: true, retainContextWhenHidden: true }
     );
@@ -57,7 +57,7 @@ export class TimelinePanel {
         <meta charset="UTF-8" />
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; script-src 'unsafe-inline' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource};" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>noGit Timeline</title>
+        <title>noGIT Timeline</title>
         <style>
           body { font-family: var(--vscode-font-family); padding: 12px; }
           .ts { font-weight: 600; margin-top: 10px; }
@@ -69,10 +69,10 @@ export class TimelinePanel {
       </head>
       <body>
         <div class="hdr">
-          <h2>noGit Timeline</h2>
+          <h2>noGIT Timeline</h2>
           <button id="refresh">Refresh</button>
         </div>
-        ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. Make some edits or run <code>noGit: Snapshot Now</code>.</div>` : ''}
+        ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. Make some edits or run <code>noGIT: Snapshot Now</code>.</div>` : ''}
         ${snapshots.map(s => `
           <div class="ts">📌 ${s.timestamp}</div>
           <div>
