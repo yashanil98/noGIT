@@ -2,10 +2,11 @@
 import * as vscode from 'vscode';
 import { SnapshotManager } from './snapshotManager';
 import { TimelinePanel } from './timelinePanel';
+import { NoGitApi, API_VERSION } from './api';
 
 let snapshotMgr: SnapshotManager | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext): NoGitApi {
   console.log('noGIT activated');
 
   snapshotMgr = new SnapshotManager(context);
@@ -51,6 +52,18 @@ export function activate(context: vscode.ExtensionContext) {
     }),
     { dispose: () => snapshotMgr?.dispose() }
   );
+
+  // Public API for other extensions and agents. These call the manager
+  // directly and never prompt, so they are safe to use headlessly.
+  const api: NoGitApi = {
+    version: API_VERSION,
+    snapshotNow: () => snapshotMgr?.snapshotNow() ?? Promise.resolve(),
+    checkpoint: (label: string) => snapshotMgr?.checkpoint(label) ?? Promise.resolve(0),
+    listSnapshots: () => snapshotMgr?.listSnapshots() ?? Promise.resolve([]),
+    restoreFile: (ts: string, rel: string) => snapshotMgr?.restoreFile(ts, rel) ?? Promise.resolve(false),
+    restoreSnapshot: (ts: string) => snapshotMgr?.restoreSnapshot(ts) ?? Promise.resolve(0),
+  };
+  return api;
 }
 
 export function deactivate() {
