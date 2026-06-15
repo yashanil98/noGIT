@@ -74,13 +74,13 @@ export class TimelinePanel {
         </div>
         ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. Make some edits or run <code>noGIT: Snapshot Now</code>.</div>` : ''}
         ${snapshots.map(s => `
-          <div class="ts">📌 ${s.timestamp}</div>
+          <div class="ts">${this.escapeHtml(this.formatTimestamp(s.timestamp))}</div>
           <div>
             ${s.files.map(rel => `
               <div class="file">
-                <span>${rel}</span>
+                <span>${this.escapeHtml(rel)}</span>
                 <span>
-                  <button data-ts="${s.timestamp}" data-rel="${rel}" class="open">Open</button>
+                  <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="open">Open</button>
                 </span>
               </div>
             `).join('') || '<div class="empty">No files captured in this snapshot.</div>'}
@@ -101,5 +101,23 @@ export class TimelinePanel {
       </html>
     `;
     this.panel.webview.html = html;
+  }
+
+  // Turn a YYYYMMDD-HHmmss stamp into a readable "YYYY-MM-DD HH:MM:SS".
+  // Falls back to the raw value if it does not match the expected shape.
+  private formatTimestamp(ts: string): string {
+    const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(ts);
+    if (!m) return ts;
+    const [, y, mo, d, h, mi, s] = m;
+    return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 }
