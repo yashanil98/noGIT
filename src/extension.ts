@@ -20,6 +20,15 @@ export function activate(context: vscode.ExtensionContext) {
       if (!snapshotMgr) return;
       await snapshotMgr.snapshotNow();
     }),
+    vscode.commands.registerCommand('nogit.checkpoint', async (label?: string) => {
+      if (!snapshotMgr) return;
+      const name = label ?? await vscode.window.showInputBox({
+        prompt: 'Name this checkpoint',
+        placeHolder: 'e.g. before agent refactor',
+      });
+      if (!name) return;
+      await snapshotMgr.checkpoint(name);
+    }),
     vscode.commands.registerCommand('nogit.restoreFile', async (ts?: string, rel?: string) => {
       if (!snapshotMgr || !ts || !rel) return;
       const choice = await vscode.window.showWarningMessage(

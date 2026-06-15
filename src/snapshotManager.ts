@@ -6,6 +6,7 @@ import { matchesAny } from './glob';
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
   files: string[];              // relative paths
+  label?: string;               // set for named checkpoints
 }
 
 const DEFAULT_EXCLUDES = [
@@ -89,14 +90,40 @@ export class SnapshotManager {
 
     if (items.length === 0) return; // nothing changed
 
+    const copied = await this.writeSnapshot(items);
+    await this.pruneOldSnapshots();
+    vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied} files)`, 3000);
+  }
+
+  // Capture a named checkpoint of the entire current workspace, so a restore
+  // brings everything back to exactly this point. Useful before handing the
+  // workspace to an AI agent or any bulk operation. Checkpoints are kept out
+  // of automatic pruning.
+  public async checkpoint(label: string): Promise<number> {
+    if (!this.workspaceFolder) return 0;
+    const exclude = `{${this.activeExcludeGlobs().join(',')}}`;
+    const uris = await vscode.workspace.findFiles('**/*', exclude);
+    const rels: string[] = [];
+    for (const uri of uris) {
+      const rel = this.toRel(uri.fsPath);
+      if (rel && !this.shouldExclude(rel)) rels.push(rel);
+    }
+    const copied = await this.writeSnapshot(rels, label);
+    vscode.window.setStatusBarMessage(`noGIT checkpoint "${label}" saved (${copied} files)`, 4000);
+    return copied;
+  }
+
+  // Write the given files into a new timestamped snapshot folder and record a
+  // manifest. Returns the number of files actually copied.
+  private async writeSnapshot(rels: string[], label?: string): Promise<number> {
+    if (!this.workspaceFolder) return 0;
     const ts = this.makeTimestamp();
     const snapRoot = await this.getSnapshotsRoot();
     const snapDir = path.join(snapRoot, ts);
-
     await fs.mkdir(snapDir, { recursive: true });
 
     const copied: string[] = [];
-    for (const rel of items) {
+    for (const rel of rels) {
       try {
         const abs = path.join(this.workspaceFolder.uri.fsPath, rel);
         const dest = path.join(snapDir, rel);
@@ -109,15 +136,10 @@ export class SnapshotManager {
       }
     }
 
-    // write manifest
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
+    if (label) manifest.label = label;
     await fs.writeFile(path.join(snapDir, 'meta.json'), JSON.stringify(manifest, null, 2), 'utf8');
-
-    // prune
-    await this.pruneOldSnapshots();
-
-    // notify
-    vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied.length} files)`, 3000);
+    return copied.length;
   }
 
   public async listSnapshots(): Promise<SnapshotInfo[]> {
@@ -212,13 +234,30 @@ export class SnapshotManager {
     try {
       const entries = await fs.readdir(root, { withFileTypes: true });
       const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
-      const excess = Math.max(0, dirs.length - max);
+      // Named checkpoints are intentional restore points; never auto-prune
+      // them. Only automatic snapshots count against maxSnapshots.
+      const auto: string[] = [];
+      for (const d of dirs) {
+        if (!(await this.isCheckpoint(root, d))) auto.push(d);
+      }
+      const excess = Math.max(0, auto.length - max);
       for (let i = 0; i < excess; i++) {
-        const dir = path.join(root, dirs[i]);
+        const dir = path.join(root, auto[i]);
         await fs.rm(dir, { recursive: true, force: true });
       }
     } catch {
       // ignore
+    }
+  }
+
+  private async isCheckpoint(root: string, dir: string): Promise<boolean> {
+    try {
+      const meta = JSON.parse(
+        await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8')
+      ) as SnapshotInfo;
+      return typeof meta.label === 'string' && meta.label.length > 0;
+    } catch {
+      return false;
     }
   }
 
@@ -256,6 +295,12 @@ export class SnapshotManager {
     return rel;
   }
 
+  private activeExcludeGlobs(): string[] {
+    return vscode.workspace
+      .getConfiguration('nogit')
+      .get<string[]>('excludePatterns', DEFAULT_EXCLUDES);
+  }
+
   private shouldExclude(rel: string): boolean {
     // Always skip our own snapshot folder, regardless of user config. The
     // filesystem watcher fires on snapshot writes, so without this guard a
@@ -264,10 +309,7 @@ export class SnapshotManager {
     const folder = this.snapshotFolderName();
     if (rel === folder || rel.startsWith(`${folder}/`)) return true;
 
-    const patterns = vscode.workspace
-      .getConfiguration('nogit')
-      .get<string[]>('excludePatterns', DEFAULT_EXCLUDES);
-    return matchesAny(patterns, rel);
+    return matchesAny(this.activeExcludeGlobs(), rel);
   }
 
   private makeTimestamp(): string {

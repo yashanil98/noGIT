@@ -17,6 +17,9 @@ export class TimelinePanel {
         if (!p) return;
         const uri = vscode.Uri.file(p);
         await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
+      } else if (msg?.type === 'checkpoint') {
+        await vscode.commands.executeCommand('nogit.checkpoint');
+        this.refresh();
       } else if (msg?.type === 'diff') {
         await this.openDiff(msg.ts, msg.rel);
       } else if (msg?.type === 'restoreFile') {
@@ -85,19 +88,23 @@ export class TimelinePanel {
           .file span:last-child { display: flex; gap: 6px; }
           button { border: 1px solid var(--vscode-button-border, #888); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
           .empty { opacity: 0.7; font-style: italic; }
+          .badge { font-weight: 400; font-size: 0.85em; padding: 1px 6px; margin-left: 6px; border-radius: 8px; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, #fff); }
           .hdr { display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px; }
         </style>
       </head>
       <body>
         <div class="hdr">
           <h2>noGIT Timeline</h2>
-          <button id="refresh">Refresh</button>
+          <span>
+            <button id="checkpoint">Checkpoint</button>
+            <button id="refresh">Refresh</button>
+          </span>
         </div>
         ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. Make some edits or run <code>noGIT: Snapshot Now</code>.</div>` : ''}
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">
-              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}</span>
+              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
               <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
             </div>
             ${s.files.map(rel => `
@@ -128,6 +135,7 @@ export class TimelinePanel {
           document.querySelectorAll('.restore-snap').forEach(btn =>
             btn.addEventListener('click', () => send('restoreSnapshot', btn)));
           document.getElementById('refresh')?.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
+          document.getElementById('checkpoint')?.addEventListener('click', () => vscode.postMessage({ type: 'checkpoint' }));
         </script>
       </body>
       </html>
