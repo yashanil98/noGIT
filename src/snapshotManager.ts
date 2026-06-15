@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { matchesAny } from './glob';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -180,32 +181,7 @@ export class SnapshotManager {
     const patterns = vscode.workspace
       .getConfiguration('nogit')
       .get<string[]>('excludePatterns', DEFAULT_EXCLUDES);
-    return patterns.some(p => this.globMatch(p, rel));
-  }
-
-  // Minimal glob matcher supporting * and **. Sufficient for the
-  // directory-style patterns exposed in nogit.excludePatterns.
-  private globMatch(pattern: string, value: string): boolean {
-    // Walk the pattern left to right, translating each token to a regex
-    // fragment. Tokenizing in one pass keeps wildcard fragments and escaped
-    // literal text from interfering with one another.
-    let regexBody = '';
-    for (let i = 0; i < pattern.length; ) {
-      if (pattern.startsWith('**/', i)) {
-        regexBody += '(?:.*/)?';   // any number of leading directories, including none
-        i += 3;
-      } else if (pattern.startsWith('**', i)) {
-        regexBody += '.*';         // anything, across path separators
-        i += 2;
-      } else if (pattern[i] === '*') {
-        regexBody += '[^/]*';      // anything within a single path segment
-        i += 1;
-      } else {
-        regexBody += pattern[i].replace(/[.+^${}()|[\]\\]/, '\\$&');
-        i += 1;
-      }
-    }
-    return new RegExp(`^${regexBody}$`).test(value);
+    return matchesAny(patterns, rel);
   }
 
   private makeTimestamp(): string {

@@ -94,6 +94,7 @@
     "watch:esbuild": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
     "compile": "tsc -p .",
+    "test": "tsc -p . && node --test out/test/",
     "package": "npm run build && npx @vscode/vsce@2 package --no-dependencies"
   },
   "devDependencies": {

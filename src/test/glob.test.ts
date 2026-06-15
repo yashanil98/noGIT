@@ -1,0 +1,47 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { globMatch, matchesAny } from '../glob';
+
+const DEFAULT_EXCLUDES = [
+  '**/.git/**',
+  '**/.nogit/**',
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/out/**',
+];
+
+test('** matches across path separators including the leading directory', () => {
+  assert.equal(globMatch('**/node_modules/**', 'node_modules/foo/bar.js'), true);
+  assert.equal(globMatch('**/node_modules/**', 'src/node_modules/x.js'), true);
+  assert.equal(globMatch('**/.git/**', '.git/config'), true);
+  assert.equal(globMatch('**/.nogit/**', '.nogit/snapshots/x'), true);
+});
+
+test('* stays within a single path segment', () => {
+  assert.equal(globMatch('**/*.log', 'logs/debug.log'), true);
+  assert.equal(globMatch('*.log', 'debug.log'), true);
+  assert.equal(globMatch('*.log', 'nested/debug.log'), false);
+});
+
+test('a trailing /** matches everything under a prefix', () => {
+  assert.equal(globMatch('src/**', 'src/deep/app.ts'), true);
+  assert.equal(globMatch('src/**', 'lib/app.ts'), false);
+});
+
+test('non-matching paths are rejected', () => {
+  assert.equal(globMatch('**/node_modules/**', 'src/app.ts'), false);
+  assert.equal(globMatch('**/.git/**', 'src/app.ts'), false);
+});
+
+test('dots in the pattern are treated as literals', () => {
+  assert.equal(globMatch('**/.nogit/**', 'Xnogit/x'), false);
+  assert.equal(globMatch('a.b', 'a.b'), true);
+  assert.equal(globMatch('a.b', 'axb'), false);
+});
+
+test('matchesAny applies the default exclude set', () => {
+  assert.equal(matchesAny(DEFAULT_EXCLUDES, 'node_modules/react/index.js'), true);
+  assert.equal(matchesAny(DEFAULT_EXCLUDES, 'dist/extension.js'), true);
+  assert.equal(matchesAny(DEFAULT_EXCLUDES, 'out/x.js'), true);
+  assert.equal(matchesAny(DEFAULT_EXCLUDES, 'src/snapshotManager.ts'), false);
+});
