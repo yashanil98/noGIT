@@ -2,14 +2,17 @@
 
 Automatic local snapshots of your workspace, browsable from a timeline panel. No Git repository required.
 
-noGIT saves copies of the files you edit at a regular interval and lets you open any earlier version from a timeline view. It is meant for folders where a full Git repo is more than you need: quick scripts, school projects, config files, scratch work.
+noGIT saves copies of the files you edit at a regular interval and lets you open, diff, or restore any earlier version from a timeline view. It is meant for folders where a full Git repo is more than you need: quick scripts, school projects, config files, scratch work. It also works as an undo button for AI coding agents, which often rewrite many files at once and directly on disk.
 
 ## Features
 
 - Automatic snapshots of modified files on a configurable interval (default: every 10 minutes)
+- Captures changes made outside the editor too, including files written by AI agents and other tools
 - All data stays in a local `.nogit/` folder inside your workspace
 - Timeline panel listing every snapshot and the files it captured
-- Open any captured version of a file in a read-only tab
+- Open, diff, or restore any captured version of a file
+- Named checkpoints of the whole workspace, kept out of automatic pruning
+- Public API so other extensions and agents can snapshot and restore programmatically
 - Automatic pruning to cap the number of stored snapshots (default: 48)
 - Configurable exclude patterns, with `node_modules`, `.git`, `dist`, and `out` ignored by default
 - No network calls and no runtime dependencies
@@ -29,7 +32,7 @@ code --install-extension yashanil98.nogit
 Download the `.vsix` from the [Releases page](https://github.com/yashanil98/noGIT/releases), then:
 
 ```bash
-code --install-extension nogit-0.1.0.vsix
+code --install-extension nogit-0.2.0.vsix
 ```
 
 ### From source
@@ -55,7 +58,7 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 
    `Ctrl+Shift+P` then `noGIT: Show Timeline`
 
-5. Click `Open` next to any file to view that version in a read-only tab.
+5. For any file in the timeline, click `Open` to view that version, `Diff` to compare it against your current file, or `Restore` to bring it back. `Restore all` restores the whole snapshot.
 
 ## Commands
 
@@ -63,6 +66,31 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 | --- | --- |
 | `noGIT: Snapshot Now` | Capture the files modified since the last snapshot |
 | `noGIT: Show Timeline` | Open the timeline panel |
+| `noGIT: Create Checkpoint` | Capture a named checkpoint of the entire workspace |
+
+Restoring a file or snapshot first snapshots your current state, so any restore can itself be undone.
+
+## Using noGIT with AI agents
+
+AI coding agents often rewrite many files at once, sometimes writing directly to disk rather than through the editor. noGIT captures those changes and gives you a one-click way back.
+
+A good workflow is to create a checkpoint before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review or undo what the agent changed.
+
+Other extensions can drive noGIT through its public API:
+
+```ts
+import type { NoGitApi } from 'nogit';
+
+const ext = vscode.extensions.getExtension('yashanil98.nogit');
+const api: NoGitApi | undefined = ext?.exports;
+
+await api?.checkpoint('before agent run');
+// ... let the agent work ...
+const snapshots = await api?.listSnapshots();
+await api?.restoreSnapshot(snapshots[0].timestamp);
+```
+
+The API methods never prompt, so they are safe to call headlessly.
 
 ## Configuration
 
@@ -117,6 +145,7 @@ Each snapshot copies only the files that changed since the previous snapshot. Th
 npm install            # install dependencies
 npm run build          # production bundle
 npm run compile        # type-check with tsc
+npm test               # run the unit tests
 npm run watch:esbuild  # rebuild on save
 npm run package        # build a .vsix
 ```
@@ -125,10 +154,9 @@ Press `F5` in VS Code to launch the Extension Development Host.
 
 ## Roadmap
 
-- Diff view to compare a snapshot against the current file
-- Restore command to revert a file to a previous snapshot
 - Multi-root workspace support
 - Per-file timeline in the editor gutter
+- Retention policy for checkpoints
 
 ## License
 
