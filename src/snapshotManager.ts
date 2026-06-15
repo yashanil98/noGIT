@@ -21,6 +21,7 @@ export class SnapshotManager {
   private timer: NodeJS.Timeout | undefined;
   private modified: Set<string> = new Set(); // relative paths within workspace
   private workspaceFolder: vscode.WorkspaceFolder | undefined;
+  private watcher: vscode.FileSystemWatcher | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -51,6 +52,23 @@ export class SnapshotManager {
         this.restartTimer();
       }
     }, null, this.context.subscriptions);
+
+    // Watch the filesystem directly so changes made outside the editor are
+    // captured too. AI coding agents and other tools often write files
+    // through the filesystem rather than through an editor document, which
+    // the onDidChange/onDidSave document events never see. The exclude check
+    // skips our own .nogit/ writes, so this does not feed back on itself.
+    this.watcher = vscode.workspace.createFileSystemWatcher('**/*');
+    const track = (uri: vscode.Uri) => {
+      if (uri.scheme !== 'file') return;
+      const rel = this.toRel(uri.fsPath);
+      if (!rel) return;
+      if (this.shouldExclude(rel)) return;
+      this.modified.add(rel);
+    };
+    this.watcher.onDidCreate(track, null, this.context.subscriptions);
+    this.watcher.onDidChange(track, null, this.context.subscriptions);
+    this.context.subscriptions.push(this.watcher);
   }
 
   public start() {
@@ -61,6 +79,7 @@ export class SnapshotManager {
 
   public dispose() {
     if (this.timer) clearInterval(this.timer);
+    this.watcher?.dispose();
   }
 
   public async snapshotNow() {
@@ -178,6 +197,13 @@ export class SnapshotManager {
   }
 
   private shouldExclude(rel: string): boolean {
+    // Always skip our own snapshot folder, regardless of user config. The
+    // filesystem watcher fires on snapshot writes, so without this guard a
+    // custom excludePatterns that drops the .nogit entry would make noGIT
+    // snapshot its own snapshots in a loop.
+    const folder = this.snapshotFolderName();
+    if (rel === folder || rel.startsWith(`${folder}/`)) return true;
+
     const patterns = vscode.workspace
       .getConfiguration('nogit')
       .get<string[]>('excludePatterns', DEFAULT_EXCLUDES);
