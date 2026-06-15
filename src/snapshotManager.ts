@@ -7,6 +7,14 @@ export interface SnapshotInfo {
   files: string[];              // relative paths
 }
 
+const DEFAULT_EXCLUDES = [
+  '**/.git/**',
+  '**/.nogit/**',
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/out/**',
+];
+
 export class SnapshotManager {
   private context: vscode.ExtensionContext;
   private timer: NodeJS.Timeout | undefined;
@@ -169,11 +177,35 @@ export class SnapshotManager {
   }
 
   private shouldExclude(rel: string): boolean {
-    // very light exclusion logic for MVP
-    if (rel.includes('/.git/') || rel.includes('/.nogit/') || rel.includes('/node_modules/') || rel.includes('/dist/') || rel.includes('/out/')) {
-      return true;
+    const patterns = vscode.workspace
+      .getConfiguration('nogit')
+      .get<string[]>('excludePatterns', DEFAULT_EXCLUDES);
+    return patterns.some(p => this.globMatch(p, rel));
+  }
+
+  // Minimal glob matcher supporting * and **. Sufficient for the
+  // directory-style patterns exposed in nogit.excludePatterns.
+  private globMatch(pattern: string, value: string): boolean {
+    // Walk the pattern left to right, translating each token to a regex
+    // fragment. Tokenizing in one pass keeps wildcard fragments and escaped
+    // literal text from interfering with one another.
+    let regexBody = '';
+    for (let i = 0; i < pattern.length; ) {
+      if (pattern.startsWith('**/', i)) {
+        regexBody += '(?:.*/)?';   // any number of leading directories, including none
+        i += 3;
+      } else if (pattern.startsWith('**', i)) {
+        regexBody += '.*';         // anything, across path separators
+        i += 2;
+      } else if (pattern[i] === '*') {
+        regexBody += '[^/]*';      // anything within a single path segment
+        i += 1;
+      } else {
+        regexBody += pattern[i].replace(/[.+^${}()|[\]\\]/, '\\$&');
+        i += 1;
+      }
     }
-    return false;
+    return new RegExp(`^${regexBody}$`).test(value);
   }
 
   private makeTimestamp(): string {
