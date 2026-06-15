@@ -146,6 +146,59 @@ export class SnapshotManager {
     return path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots', ts, relPath);
   }
 
+  // Restore a single file from a snapshot back into the workspace. The current
+  // contents are captured in a fresh snapshot first so the restore is itself
+  // undoable. Returns true on success.
+  public async restoreFile(ts: string, rel: string): Promise<boolean> {
+    if (!this.workspaceFolder) return false;
+    const src = this.resolveSnapshotPath(ts, rel);
+    if (!src) return false;
+    await this.backupBeforeRestore([rel]);
+    const ok = await this.copyInto(src, rel);
+    if (!ok) return false;
+    vscode.window.setStatusBarMessage(`noGIT restored ${rel}`, 3000);
+    return true;
+  }
+
+  // Restore every file captured in a snapshot. The current state is captured
+  // first. Returns the number of files restored.
+  public async restoreSnapshot(ts: string): Promise<number> {
+    if (!this.workspaceFolder) return 0;
+    const snap = (await this.listSnapshots()).find(s => s.timestamp === ts);
+    if (!snap) return 0;
+    await this.backupBeforeRestore(snap.files);
+    let restored = 0;
+    for (const rel of snap.files) {
+      const src = this.resolveSnapshotPath(ts, rel);
+      if (!src) continue;
+      if (await this.copyInto(src, rel)) restored++;
+    }
+    vscode.window.setStatusBarMessage(`noGIT restored ${restored} file(s) from ${ts}`, 3000);
+    return restored;
+  }
+
+  // Capture the current on-disk contents of the given files into a snapshot so
+  // a restore can itself be undone, even for files that were not in the pending
+  // modified set.
+  private async backupBeforeRestore(rels: string[]) {
+    for (const rel of rels) this.modified.add(rel);
+    await this.snapshotNow();
+  }
+
+  private async copyInto(src: string, rel: string): Promise<boolean> {
+    if (!this.workspaceFolder) return false;
+    try {
+      const dest = path.join(this.workspaceFolder.uri.fsPath, rel);
+      const data = await fs.readFile(src);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.writeFile(dest, data);
+      return true;
+    } catch (err) {
+      console.error('noGIT restore failed for', rel, err);
+      return false;
+    }
+  }
+
   private async pruneOldSnapshots() {
     const root = await this.getSnapshotsRoot();
     const max = vscode.workspace.getConfiguration('nogit').get<number>('maxSnapshots', 48);

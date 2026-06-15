@@ -20,6 +20,26 @@ export function activate(context: vscode.ExtensionContext) {
       if (!snapshotMgr) return;
       await snapshotMgr.snapshotNow();
     }),
+    vscode.commands.registerCommand('nogit.restoreFile', async (ts?: string, rel?: string) => {
+      if (!snapshotMgr || !ts || !rel) return;
+      const choice = await vscode.window.showWarningMessage(
+        `Restore ${rel} from snapshot ${ts}? Your current version is snapshotted first so this can be undone.`,
+        { modal: true },
+        'Restore'
+      );
+      if (choice !== 'Restore') return;
+      await snapshotMgr.restoreFile(ts, rel);
+    }),
+    vscode.commands.registerCommand('nogit.restoreSnapshot', async (ts?: string) => {
+      if (!snapshotMgr || !ts) return;
+      const choice = await vscode.window.showWarningMessage(
+        `Restore all files from snapshot ${ts}? Your current versions are snapshotted first so this can be undone.`,
+        { modal: true },
+        'Restore All'
+      );
+      if (choice !== 'Restore All') return;
+      await snapshotMgr.restoreSnapshot(ts);
+    }),
     { dispose: () => snapshotMgr?.dispose() }
   );
 }

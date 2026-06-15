@@ -17,6 +17,12 @@ export class TimelinePanel {
         if (!p) return;
         const uri = vscode.Uri.file(p);
         await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
+      } else if (msg?.type === 'restoreFile') {
+        await vscode.commands.executeCommand('nogit.restoreFile', msg.ts, msg.rel);
+        this.refresh();
+      } else if (msg?.type === 'restoreSnapshot') {
+        await vscode.commands.executeCommand('nogit.restoreSnapshot', msg.ts);
+        this.refresh();
       } else if (msg?.type === 'refresh') {
         this.refresh();
       }
@@ -60,8 +66,9 @@ export class TimelinePanel {
         <title>noGIT Timeline</title>
         <style>
           body { font-family: var(--vscode-font-family); padding: 12px; }
-          .ts { font-weight: 600; margin-top: 10px; }
-          .file { font-family: monospace; padding: 4px 0; display: flex; justify-content: space-between; }
+          .ts { font-weight: 600; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; }
+          .file { font-family: monospace; padding: 4px 0; display: flex; justify-content: space-between; align-items: center; }
+          .file span:last-child { display: flex; gap: 6px; }
           button { border: 1px solid var(--vscode-button-border, #888); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
           .empty { opacity: 0.7; font-style: italic; }
           .hdr { display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px; }
@@ -74,13 +81,17 @@ export class TimelinePanel {
         </div>
         ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. Make some edits or run <code>noGIT: Snapshot Now</code>.</div>` : ''}
         ${snapshots.map(s => `
-          <div class="ts">${this.escapeHtml(this.formatTimestamp(s.timestamp))}</div>
-          <div>
+          <div class="snap">
+            <div class="ts">
+              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}</span>
+              <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
+            </div>
             ${s.files.map(rel => `
               <div class="file">
                 <span>${this.escapeHtml(rel)}</span>
                 <span>
                   <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="open">Open</button>
+                  <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="restore">Restore</button>
                 </span>
               </div>
             `).join('') || '<div class="empty">No files captured in this snapshot.</div>'}
@@ -88,13 +99,17 @@ export class TimelinePanel {
         `).join('')}
         <script>
           const vscode = acquireVsCodeApi();
-          document.querySelectorAll('.open').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const ts = btn.getAttribute('data-ts');
-              const rel = btn.getAttribute('data-rel');
-              vscode.postMessage({ type: 'openPreview', ts, rel });
-            });
+          const send = (type, btn) => vscode.postMessage({
+            type,
+            ts: btn.getAttribute('data-ts'),
+            rel: btn.getAttribute('data-rel'),
           });
+          document.querySelectorAll('.open').forEach(btn =>
+            btn.addEventListener('click', () => send('openPreview', btn)));
+          document.querySelectorAll('.restore').forEach(btn =>
+            btn.addEventListener('click', () => send('restoreFile', btn)));
+          document.querySelectorAll('.restore-snap').forEach(btn =>
+            btn.addEventListener('click', () => send('restoreSnapshot', btn)));
           document.getElementById('refresh')?.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
         </script>
       </body>

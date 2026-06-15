@@ -45,8 +45,28 @@
       {
         "command": "nogit.snapshotNow",
         "title": "noGIT: Snapshot Now"
+      },
+      {
+        "command": "nogit.restoreFile",
+        "title": "noGIT: Restore File from Snapshot"
+      },
+      {
+        "command": "nogit.restoreSnapshot",
+        "title": "noGIT: Restore Entire Snapshot"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "nogit.restoreFile",
+          "when": "false"
+        },
+        {
+          "command": "nogit.restoreSnapshot",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "noGIT",
       "properties": {
