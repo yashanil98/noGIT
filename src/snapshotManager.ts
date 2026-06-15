@@ -146,6 +146,13 @@ export class SnapshotManager {
     return path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots', ts, relPath);
   }
 
+  // Absolute path to a file in the current workspace, or undefined when no
+  // folder is open.
+  public resolveWorkspacePath(relPath: string): string | undefined {
+    if (!this.workspaceFolder) return undefined;
+    return path.join(this.workspaceFolder.uri.fsPath, relPath);
+  }
+
   // Restore a single file from a snapshot back into the workspace. The current
   // contents are captured in a fresh snapshot first so the restore is itself
   // undoable. Returns true on success.

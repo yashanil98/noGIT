@@ -17,6 +17,8 @@ export class TimelinePanel {
         if (!p) return;
         const uri = vscode.Uri.file(p);
         await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
+      } else if (msg?.type === 'diff') {
+        await this.openDiff(msg.ts, msg.rel);
       } else if (msg?.type === 'restoreFile') {
         await vscode.commands.executeCommand('nogit.restoreFile', msg.ts, msg.rel);
         this.refresh();
@@ -50,6 +52,18 @@ export class TimelinePanel {
   private async refresh() {
     this.snapshots = await this.snapMgr.listSnapshots();
     this.render();
+  }
+
+  // Open the native diff editor comparing the snapshot version (left) against
+  // the current working file (right).
+  private async openDiff(ts: string, rel: string) {
+    const snapPath = this.snapMgr.resolveSnapshotPath(ts, rel);
+    const curPath = this.snapMgr.resolveWorkspacePath(rel);
+    if (!snapPath || !curPath) return;
+    const left = vscode.Uri.file(snapPath);
+    const right = vscode.Uri.file(curPath);
+    const title = `${rel} (${this.formatTimestamp(ts)} ↔ current)`;
+    await vscode.commands.executeCommand('vscode.diff', left, right, title);
   }
 
   private render() {
@@ -91,6 +105,7 @@ export class TimelinePanel {
                 <span>${this.escapeHtml(rel)}</span>
                 <span>
                   <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="open">Open</button>
+                  <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="diff">Diff</button>
                   <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="restore">Restore</button>
                 </span>
               </div>
@@ -106,6 +121,8 @@ export class TimelinePanel {
           });
           document.querySelectorAll('.open').forEach(btn =>
             btn.addEventListener('click', () => send('openPreview', btn)));
+          document.querySelectorAll('.diff').forEach(btn =>
+            btn.addEventListener('click', () => send('diff', btn)));
           document.querySelectorAll('.restore').forEach(btn =>
             btn.addEventListener('click', () => send('restoreFile', btn)));
           document.querySelectorAll('.restore-snap').forEach(btn =>
