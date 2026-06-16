@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { SnapshotManager, SnapshotInfo } from './snapshotManager';
+import { relativeTime } from './relativeTime';
 
 export class TimelinePanel {
   public static current: TimelinePanel | undefined;
@@ -72,6 +73,7 @@ export class TimelinePanel {
   private render() {
     const webview = this.panel.webview;
     const snapshots = this.snapshots;
+    const now = Date.now();
 
     const html = `
       <!DOCTYPE html>
@@ -89,6 +91,7 @@ export class TimelinePanel {
           button { border: 1px solid var(--vscode-button-border, #888); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
           .empty { opacity: 0.7; font-style: italic; }
           .badge { font-weight: 400; font-size: 0.85em; padding: 1px 6px; margin-left: 6px; border-radius: 8px; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, #fff); }
+          .rel { font-weight: 400; font-size: 0.85em; opacity: 0.7; margin-left: 8px; }
           .hdr { display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px; }
         </style>
       </head>
@@ -104,7 +107,7 @@ export class TimelinePanel {
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">
-              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
+              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
               <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
             </div>
             ${s.files.map(rel => `
