@@ -10,6 +10,7 @@ noGIT saves copies of the files you edit at a regular interval and lets you open
 - Captures changes made outside the editor too, including files written by AI agents and other tools
 - All data stays in a local `.nogit/` folder inside your workspace
 - Timeline panel listing every snapshot and the files it captured
+- Status bar item showing when the last snapshot was taken, with one click to the timeline
 - Open, diff, or restore any captured version of a file
 - Named checkpoints of the whole workspace, kept out of automatic pruning
 - Public API so other extensions and agents can snapshot and restore programmatically

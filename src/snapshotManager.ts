@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { matchesAny } from './glob';
 import { uniqueSnapshotName } from './snapshotName';
+import { relativeTime } from './relativeTime';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -24,6 +25,9 @@ export class SnapshotManager {
   private modified: Set<string> = new Set(); // relative paths within workspace
   private workspaceFolder: vscode.WorkspaceFolder | undefined;
   private watcher: vscode.FileSystemWatcher | undefined;
+  private statusItem: vscode.StatusBarItem | undefined;
+  private statusTimer: NodeJS.Timeout | undefined;
+  private lastSnapshotTs: string | undefined;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -32,6 +36,15 @@ export class SnapshotManager {
       vscode.window.showWarningMessage('noGIT: Open a folder/workspace to enable snapshots.');
       return;
     }
+
+    // A quiet status bar presence: shows when the last snapshot was taken and
+    // opens the timeline on click. Refreshed after each snapshot and on a slow
+    // timer so the relative time stays current.
+    this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    this.statusItem.command = 'nogit.showTimeline';
+    this.context.subscriptions.push(this.statusItem);
+    this.updateStatusItem();
+    this.statusItem.show();
 
     vscode.workspace.onDidChangeTextDocument(e => {
       if (e.document.uri.scheme !== 'file') return;
@@ -74,14 +87,41 @@ export class SnapshotManager {
   }
 
   public start() {
+    if (!this.workspaceFolder) return;
+    // Seed the status item from the most recent snapshot on disk so it shows a
+    // real time across restarts, not "No snapshots yet".
+    void this.listSnapshots().then(snaps => {
+      if (snaps.length > 0 && !this.lastSnapshotTs) {
+        this.lastSnapshotTs = snaps[0].timestamp;
+        this.updateStatusItem();
+      }
+    });
+    // Keep the relative time fresh without taking snapshots.
+    this.statusTimer = setInterval(() => this.updateStatusItem(), 60 * 1000);
+
     const enabled = vscode.workspace.getConfiguration('nogit').get<boolean>('enable', true);
-    if (!enabled || !this.workspaceFolder) return;
+    if (!enabled) return;
     this.restartTimer();
   }
 
   public dispose() {
     if (this.timer) clearInterval(this.timer);
+    if (this.statusTimer) clearInterval(this.statusTimer);
     this.watcher?.dispose();
+    this.statusItem?.dispose();
+  }
+
+  // Refresh the status bar label from the last snapshot time. Safe to call when
+  // no folder is open (the item is never created in that case).
+  private updateStatusItem() {
+    if (!this.statusItem) return;
+    const when = this.lastSnapshotTs
+      ? relativeTime(this.lastSnapshotTs, Date.now())
+      : undefined;
+    this.statusItem.text = when ? `$(history) noGIT: ${when}` : '$(history) noGIT';
+    this.statusItem.tooltip = when
+      ? `Last snapshot ${when}. Click to open the timeline.`
+      : 'noGIT: no snapshots yet. Click to open the timeline.';
   }
 
   public async snapshotNow() {
@@ -150,6 +190,9 @@ export class SnapshotManager {
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
     if (label) manifest.label = label;
     await fs.writeFile(path.join(snapDir, 'meta.json'), JSON.stringify(manifest, null, 2), 'utf8');
+
+    this.lastSnapshotTs = ts;
+    this.updateStatusItem();
     return copied.length;
   }
 
