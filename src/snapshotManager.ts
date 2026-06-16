@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { matchesAny } from './glob';
+import { uniqueSnapshotName } from './snapshotName';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -117,8 +118,18 @@ export class SnapshotManager {
   // manifest. Returns the number of files actually copied.
   private async writeSnapshot(rels: string[], label?: string): Promise<number> {
     if (!this.workspaceFolder) return 0;
-    const ts = this.makeTimestamp();
     const snapRoot = await this.getSnapshotsRoot();
+    // Pick a folder name that does not collide with an existing snapshot. Two
+    // snapshots in the same second would otherwise merge into one folder and
+    // overwrite each other's manifest, orphaning files and dropping labels.
+    let existing: string[] = [];
+    try {
+      const entries = await fs.readdir(snapRoot, { withFileTypes: true });
+      existing = entries.filter(e => e.isDirectory()).map(e => e.name);
+    } catch {
+      // root was just created or unreadable; treat as empty
+    }
+    const ts = uniqueSnapshotName(this.makeTimestamp(), existing);
     const snapDir = path.join(snapRoot, ts);
     await fs.mkdir(snapDir, { recursive: true });
 
