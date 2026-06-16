@@ -33,7 +33,7 @@ code --install-extension yashanil98.nogit
 Download the `.vsix` from the [Releases page](https://github.com/yashanil98/noGIT/releases), then:
 
 ```bash
-code --install-extension nogit-0.2.0.vsix
+code --install-extension nogit-0.3.0.vsix
 ```
 
 ### From source

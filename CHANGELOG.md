@@ -2,6 +2,15 @@
 
 All notable changes to the noGIT extension are documented here.
 
+## [0.3.0]
+
+Reliability and visibility improvements.
+
+- Fix a case where two snapshots taken in the same second could overwrite each other, which could orphan files or drop a checkpoint label. This was easy to hit through the headless API.
+- Git-ignore the `.nogit/` folder automatically so the local history no longer shows up in `git status`.
+- Show relative times (for example "5m ago") next to each snapshot in the timeline.
+- Add a status bar item showing the time since the last snapshot, with one click to open the timeline.
+
 ## [0.2.0]
 
 Adds a safety net for AI coding agents and other tools that edit files in bulk.
