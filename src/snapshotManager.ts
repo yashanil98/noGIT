@@ -274,9 +274,28 @@ export class SnapshotManager {
 
   private async getSnapshotsRoot(): Promise<string> {
     if (!this.workspaceFolder) throw new Error('No workspace');
-    const root = path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots');
+    const base = path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName());
+    const root = path.join(base, 'snapshots');
     await fs.mkdir(root, { recursive: true });
+    await this.ensureStoreGitignored(base);
     return root;
+  }
+
+  // Drop a .gitignore inside the snapshot folder so the local history never
+  // shows up as untracked noise when the workspace is a git repo. The single
+  // "*" entry ignores the whole folder (the .gitignore ignores itself too).
+  // Written once; never overwrites a file the user may have edited.
+  private async ensureStoreGitignored(base: string) {
+    const gitignore = path.join(base, '.gitignore');
+    try {
+      await fs.access(gitignore);
+    } catch {
+      try {
+        await fs.writeFile(gitignore, '*\n', 'utf8');
+      } catch (err) {
+        console.error('noGIT could not write', gitignore, err);
+      }
+    }
   }
 
   private snapshotFolderName(): string {

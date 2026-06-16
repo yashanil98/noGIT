@@ -137,7 +137,7 @@ your-project/
         meta.json
 ```
 
-Each snapshot copies only the files that changed since the previous snapshot. The `meta.json` manifest records which files were captured and when. Add `.nogit/` to your `.gitignore` if the folder is inside a Git repository.
+Each snapshot copies only the files that changed since the previous snapshot. The `meta.json` manifest records which files were captured and when. The `.nogit/` folder is git-ignored automatically, so the local history never shows up in `git status`.
 
 ## Development
 
