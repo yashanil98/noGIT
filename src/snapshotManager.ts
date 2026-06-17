@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { matchesAny } from './glob';
-import { uniqueSnapshotName } from './snapshotName';
+import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
 import { relativeTime } from './relativeTime';
 
 export interface SnapshotInfo {
@@ -270,6 +270,28 @@ export class SnapshotManager {
     }
     vscode.window.setStatusBarMessage(`noGIT restored ${restored} file(s) from ${ts}`, 3000);
     return restored;
+  }
+
+  // Delete a snapshot or checkpoint folder from the store. The timestamp is
+  // validated first so a caller-supplied value can never point outside the
+  // snapshots folder. Returns true if a folder was removed.
+  public async deleteSnapshot(ts: string): Promise<boolean> {
+    if (!this.workspaceFolder) return false;
+    if (!isValidSnapshotName(ts)) return false;
+    const root = await this.getSnapshotsRoot();
+    const dir = path.join(root, ts);
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+    } catch (err) {
+      console.error('noGIT delete failed for', ts, err);
+      return false;
+    }
+    if (this.lastSnapshotTs === ts) {
+      const remaining = await this.listSnapshots();
+      this.lastSnapshotTs = remaining[0]?.timestamp;
+      this.updateStatusItem();
+    }
+    return true;
   }
 
   // Capture the current on-disk contents of the given files into a snapshot so

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { uniqueSnapshotName } from '../snapshotName';
+import { uniqueSnapshotName, isValidSnapshotName } from '../snapshotName';
 
 test('returns the base name when nothing collides', () => {
   assert.equal(uniqueSnapshotName('20260615-120000', []), '20260615-120000');
@@ -26,4 +26,14 @@ test('the suffixed name still sorts after its base and before the next second', 
   // its own second and the following one.
   assert.ok('20260615-120000' < '20260615-120000-2');
   assert.ok('20260615-120000-2' < '20260615-120001');
+});
+
+test('isValidSnapshotName accepts real names and rejects traversal attempts', () => {
+  assert.equal(isValidSnapshotName('20260615-120000'), true);
+  assert.equal(isValidSnapshotName('20260615-120000-2'), true);
+  assert.equal(isValidSnapshotName('../etc/passwd'), false);
+  assert.equal(isValidSnapshotName('..'), false);
+  assert.equal(isValidSnapshotName('20260615-120000/../..'), false);
+  assert.equal(isValidSnapshotName(''), false);
+  assert.equal(isValidSnapshotName('meta.json'), false);
 });
