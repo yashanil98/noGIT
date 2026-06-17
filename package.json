@@ -57,6 +57,10 @@
       {
         "command": "nogit.restoreSnapshot",
         "title": "noGIT: Restore Entire Snapshot"
+      },
+      {
+        "command": "nogit.deleteSnapshot",
+        "title": "noGIT: Delete Snapshot"
       }
     ],
     "menus": {
@@ -67,6 +71,10 @@
         },
         {
           "command": "nogit.restoreSnapshot",
+          "when": "false"
+        },
+        {
+          "command": "nogit.deleteSnapshot",
           "when": "false"
         }
       ]

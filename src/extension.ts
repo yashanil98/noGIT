@@ -50,6 +50,16 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
       if (choice !== 'Restore All') return;
       await snapshotMgr.restoreSnapshot(ts);
     }),
+    vscode.commands.registerCommand('nogit.deleteSnapshot', async (ts?: string) => {
+      if (!snapshotMgr || !ts) return;
+      const choice = await vscode.window.showWarningMessage(
+        `Delete snapshot ${ts}? This permanently removes its stored files and cannot be undone.`,
+        { modal: true },
+        'Delete'
+      );
+      if (choice !== 'Delete') return;
+      await snapshotMgr.deleteSnapshot(ts);
+    }),
     { dispose: () => snapshotMgr?.dispose() }
   );
 
