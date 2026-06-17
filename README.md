@@ -33,7 +33,7 @@ code --install-extension yashanil98.nogit
 Download the `.vsix` from the [Releases page](https://github.com/yashanil98/noGIT/releases), then:
 
 ```bash
-code --install-extension nogit-0.3.0.vsix
+code --install-extension nogit-0.4.0.vsix
 ```
 
 ### From source
@@ -59,7 +59,7 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 
    `Ctrl+Shift+P` then `noGIT: Show Timeline`
 
-5. For any file in the timeline, click `Open` to view that version, `Diff` to compare it against your current file, or `Restore` to bring it back. `Restore all` restores the whole snapshot.
+5. For any file in the timeline, click `Open` to view that version, `Diff` to compare it against your current file, or `Restore` to bring it back. `Restore all` restores the whole snapshot, and `Delete` removes it.
 
 ## Commands
 
@@ -68,6 +68,7 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 | `noGIT: Snapshot Now` | Capture the files modified since the last snapshot |
 | `noGIT: Show Timeline` | Open the timeline panel |
 | `noGIT: Create Checkpoint` | Capture a named checkpoint of the entire workspace |
+| `noGIT: Delete Snapshot` | Delete a snapshot from the store |
 
 Restoring a file or snapshot first snapshots your current state, so any restore can itself be undone.
 
@@ -89,6 +90,7 @@ await api?.checkpoint('before agent run');
 // ... let the agent work ...
 const snapshots = await api?.listSnapshots();
 await api?.restoreSnapshot(snapshots[0].timestamp);
+await api?.deleteSnapshot(snapshots[0].timestamp); // permanent, not reversible
 ```
 
 The API methods never prompt, so they are safe to call headlessly.
@@ -110,6 +112,9 @@ Configure noGIT in your VS Code `settings.json`:
 
   // Folder inside the workspace where snapshots are stored.
   "nogit.snapshotFolderName": ".nogit",
+
+  // Show a status bar item with the time since the last snapshot.
+  "nogit.showStatusBarItem": true,
 
   // Glob patterns to exclude from snapshots.
   "nogit.excludePatterns": [

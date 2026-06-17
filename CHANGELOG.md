@@ -2,6 +2,12 @@
 
 All notable changes to the noGIT extension are documented here.
 
+## [0.4.0]
+
+- Delete a snapshot from the timeline, with a confirmation prompt. Also available as the `noGIT: Delete Snapshot` command and through the public API (`deleteSnapshot`, API 1.1.0).
+- `noGIT: Snapshot Now` now reports when there are no changes to capture instead of doing nothing.
+- New `nogit.showStatusBarItem` setting to hide the status bar item.
+
 ## [0.3.0]
 
 Reliability and visibility improvements.
