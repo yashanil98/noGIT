@@ -43,8 +43,7 @@ export class SnapshotManager {
     this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.statusItem.command = 'nogit.showTimeline';
     this.context.subscriptions.push(this.statusItem);
-    this.updateStatusItem();
-    this.statusItem.show();
+    this.updateStatusItem(); // shows or hides the item per the setting
 
     vscode.workspace.onDidChangeTextDocument(e => {
       if (e.document.uri.scheme !== 'file') return;
@@ -65,6 +64,7 @@ export class SnapshotManager {
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('nogit')) {
         this.restartTimer();
+        this.updateStatusItem();
       }
     }, null, this.context.subscriptions);
 
@@ -111,10 +111,16 @@ export class SnapshotManager {
     this.statusItem?.dispose();
   }
 
-  // Refresh the status bar label from the last snapshot time. Safe to call when
-  // no folder is open (the item is never created in that case).
+  // Refresh the status bar label from the last snapshot time, or hide the item
+  // when the user has turned it off. Safe to call when no folder is open (the
+  // item is never created in that case).
   private updateStatusItem() {
     if (!this.statusItem) return;
+    const show = vscode.workspace.getConfiguration('nogit').get<boolean>('showStatusBarItem', true);
+    if (!show) {
+      this.statusItem.hide();
+      return;
+    }
     const when = this.lastSnapshotTs
       ? relativeTime(this.lastSnapshotTs, Date.now())
       : undefined;
@@ -122,6 +128,7 @@ export class SnapshotManager {
     this.statusItem.tooltip = when
       ? `Last snapshot ${when}. Click to open the timeline.`
       : 'noGIT: no snapshots yet. Click to open the timeline.';
+    this.statusItem.show();
   }
 
   // Snapshot the files modified since the last snapshot. When `explicit` is

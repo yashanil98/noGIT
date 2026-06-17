@@ -104,6 +104,11 @@
           "default": ".nogit",
           "description": "Folder inside workspace where snapshots are stored."
         },
+        "nogit.showStatusBarItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a status bar item with the time since the last snapshot."
+        },
         "nogit.excludePatterns": {
           "type": "array",
           "items": {
