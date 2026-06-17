@@ -124,12 +124,24 @@ export class SnapshotManager {
       : 'noGIT: no snapshots yet. Click to open the timeline.';
   }
 
-  public async snapshotNow() {
-    if (!this.workspaceFolder) return;
+  // Snapshot the files modified since the last snapshot. When `explicit` is
+  // set (the user ran the command directly), surface a message if there was
+  // nothing to capture, so a manual trigger never appears to do nothing. The
+  // timer and the public API leave it false and stay silent.
+  public async snapshotNow(explicit = false) {
+    if (!this.workspaceFolder) {
+      if (explicit) vscode.window.showWarningMessage('noGIT: Open a folder to take snapshots.');
+      return;
+    }
     const items = Array.from(this.modified);
     this.modified.clear();
 
-    if (items.length === 0) return; // nothing changed
+    if (items.length === 0) {
+      if (explicit) {
+        vscode.window.setStatusBarMessage('noGIT: no changes since the last snapshot', 3000);
+      }
+      return;
+    }
 
     const copied = await this.writeSnapshot(items);
     await this.pruneOldSnapshots();

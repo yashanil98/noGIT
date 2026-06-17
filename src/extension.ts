@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
     }),
     vscode.commands.registerCommand('nogit.snapshotNow', async () => {
       if (!snapshotMgr) return;
-      await snapshotMgr.snapshotNow();
+      await snapshotMgr.snapshotNow(true);
     }),
     vscode.commands.registerCommand('nogit.checkpoint', async (label?: string) => {
       if (!snapshotMgr) return;
