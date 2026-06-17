@@ -29,6 +29,9 @@ export class TimelinePanel {
       } else if (msg?.type === 'restoreSnapshot') {
         await vscode.commands.executeCommand('nogit.restoreSnapshot', msg.ts);
         this.refresh();
+      } else if (msg?.type === 'deleteSnapshot') {
+        await vscode.commands.executeCommand('nogit.deleteSnapshot', msg.ts);
+        this.refresh();
       } else if (msg?.type === 'refresh') {
         this.refresh();
       }
@@ -86,6 +89,7 @@ export class TimelinePanel {
         <style>
           body { font-family: var(--vscode-font-family); padding: 12px; }
           .ts { font-weight: 600; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; }
+          .ts span:last-child { display: flex; gap: 6px; }
           .file { font-family: monospace; padding: 4px 0; display: flex; justify-content: space-between; align-items: center; }
           .file span:last-child { display: flex; gap: 6px; }
           button { border: 1px solid var(--vscode-button-border, #888); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
@@ -108,7 +112,10 @@ export class TimelinePanel {
           <div class="snap">
             <div class="ts">
               <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
-              <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
+              <span>
+                <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
+                <button data-ts="${this.escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
+              </span>
             </div>
             ${s.files.map(rel => `
               <div class="file">
@@ -137,6 +144,8 @@ export class TimelinePanel {
             btn.addEventListener('click', () => send('restoreFile', btn)));
           document.querySelectorAll('.restore-snap').forEach(btn =>
             btn.addEventListener('click', () => send('restoreSnapshot', btn)));
+          document.querySelectorAll('.delete-snap').forEach(btn =>
+            btn.addEventListener('click', () => send('deleteSnapshot', btn)));
           document.getElementById('refresh')?.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
           document.getElementById('checkpoint')?.addEventListener('click', () => vscode.postMessage({ type: 'checkpoint' }));
         </script>
