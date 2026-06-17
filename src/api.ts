@@ -28,6 +28,11 @@ export interface NoGitApi {
 
   // Restore every file in a snapshot. Returns the number of files restored.
   restoreSnapshot(timestamp: string): Promise<number>;
+
+  // Delete a snapshot or checkpoint from the store. This is permanent and is
+  // not itself reversible. Returns true if a folder was removed. Added in API
+  // 1.1.0.
+  deleteSnapshot(timestamp: string): Promise<boolean>;
 }
 
-export const API_VERSION = '1.0.0';
+export const API_VERSION = '1.1.0';

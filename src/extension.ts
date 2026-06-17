@@ -72,6 +72,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
     listSnapshots: () => snapshotMgr?.listSnapshots() ?? Promise.resolve([]),
     restoreFile: (ts: string, rel: string) => snapshotMgr?.restoreFile(ts, rel) ?? Promise.resolve(false),
     restoreSnapshot: (ts: string) => snapshotMgr?.restoreSnapshot(ts) ?? Promise.resolve(0),
+    deleteSnapshot: (ts: string) => snapshotMgr?.deleteSnapshot(ts) ?? Promise.resolve(false),
   };
   return api;
 }
