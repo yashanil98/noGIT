@@ -151,6 +151,7 @@ export class SnapshotManager {
     }
 
     const copied = await this.writeSnapshot(items);
+    if (copied === 0) return; // nothing readable was captured
     await this.pruneOldSnapshots();
     vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied} files)`, 3000);
   }
@@ -204,6 +205,14 @@ export class SnapshotManager {
       } catch (err) {
         console.error('noGIT copy failed for', rel, err);
       }
+    }
+
+    // If nothing could be copied (for example every candidate file was deleted
+    // between being marked and being read), do not leave an empty snapshot
+    // folder and manifest behind.
+    if (copied.length === 0) {
+      await fs.rm(snapDir, { recursive: true, force: true });
+      return 0;
     }
 
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
