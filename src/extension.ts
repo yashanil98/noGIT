@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { SnapshotManager } from './snapshotManager';
 import { TimelinePanel } from './timelinePanel';
 import { NoGitApi, API_VERSION } from './api';
+import { formatStamp } from './relativeTime';
 
 let snapshotMgr: SnapshotManager | undefined;
 
@@ -33,7 +34,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
     vscode.commands.registerCommand('nogit.restoreFile', async (ts?: string, rel?: string) => {
       if (!snapshotMgr || !ts || !rel) return;
       const choice = await vscode.window.showWarningMessage(
-        `Restore ${rel} from snapshot ${ts}? Your current version is snapshotted first so this can be undone.`,
+        `Restore ${rel} from the snapshot taken ${formatStamp(ts)}? Your current version is snapshotted first so this can be undone.`,
         { modal: true },
         'Restore'
       );
@@ -43,7 +44,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
     vscode.commands.registerCommand('nogit.restoreSnapshot', async (ts?: string) => {
       if (!snapshotMgr || !ts) return;
       const choice = await vscode.window.showWarningMessage(
-        `Restore all files from snapshot ${ts}? Your current versions are snapshotted first so this can be undone.`,
+        `Restore all files from the snapshot taken ${formatStamp(ts)}? Your current versions are snapshotted first so this can be undone.`,
         { modal: true },
         'Restore All'
       );
@@ -53,7 +54,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
     vscode.commands.registerCommand('nogit.deleteSnapshot', async (ts?: string) => {
       if (!snapshotMgr || !ts) return;
       const choice = await vscode.window.showWarningMessage(
-        `Delete snapshot ${ts}? This permanently removes its stored files and cannot be undone.`,
+        `Delete the snapshot taken ${formatStamp(ts)}? This permanently removes its stored files and cannot be undone.`,
         { modal: true },
         'Delete'
       );
