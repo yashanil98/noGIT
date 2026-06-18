@@ -29,6 +29,12 @@ export class SnapshotManager {
   private statusTimer: NodeJS.Timeout | undefined;
   private lastSnapshotTs: string | undefined;
 
+  // Fires whenever the set of stored snapshots changes (a snapshot written or
+  // deleted). The timeline panel listens so it refreshes without the user
+  // clicking Refresh.
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  public readonly onDidChangeSnapshots = this.changeEmitter.event;
+
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
     this.workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -109,6 +115,7 @@ export class SnapshotManager {
     if (this.statusTimer) clearInterval(this.statusTimer);
     this.watcher?.dispose();
     this.statusItem?.dispose();
+    this.changeEmitter.dispose();
   }
 
   // Refresh the status bar label from the last snapshot time, or hide the item
@@ -221,6 +228,7 @@ export class SnapshotManager {
 
     this.lastSnapshotTs = ts;
     this.updateStatusItem();
+    this.changeEmitter.fire();
     return copied.length;
   }
 
@@ -307,6 +315,7 @@ export class SnapshotManager {
       this.lastSnapshotTs = remaining[0]?.timestamp;
       this.updateStatusItem();
     }
+    this.changeEmitter.fire();
     return true;
   }
 
