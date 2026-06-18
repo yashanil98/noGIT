@@ -12,6 +12,10 @@ export class TimelinePanel {
     this.panel = panel;
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
+    // Refresh when snapshots change in the background (a timer snapshot, an
+    // API call, or a delete), so the panel stays current without a click.
+    this.snapMgr.onDidChangeSnapshots(() => this.refresh(), null, this.disposables);
+
     this.panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg?.type === 'openPreview') {
         const p = this.snapMgr.resolveSnapshotPath(msg.ts, msg.rel);
