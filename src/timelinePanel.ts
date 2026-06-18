@@ -100,6 +100,7 @@ export class TimelinePanel {
           .empty { opacity: 0.7; font-style: italic; }
           .badge { font-weight: 400; font-size: 0.85em; padding: 1px 6px; margin-left: 6px; border-radius: 8px; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, #fff); }
           .rel { font-weight: 400; font-size: 0.85em; opacity: 0.7; margin-left: 8px; }
+          .count { font-weight: 400; font-size: 0.85em; opacity: 0.7; margin-left: 8px; }
           .hdr { display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px; }
         </style>
       </head>
@@ -115,7 +116,7 @@ export class TimelinePanel {
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">
-              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
+              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
               <span>
                 <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
                 <button data-ts="${this.escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
@@ -166,6 +167,11 @@ export class TimelinePanel {
     if (!m) return ts;
     const [, y, mo, d, h, mi, s] = m;
     return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+  }
+
+  // "1 file" or "N files". Already plain text, so it needs no escaping.
+  private fileCountLabel(n: number): string {
+    return `${n} ${n === 1 ? 'file' : 'files'}`;
   }
 
   private escapeHtml(value: string): string {
