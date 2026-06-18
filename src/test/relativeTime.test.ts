@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSnapshotStamp, relativeTime } from '../relativeTime';
+import { parseSnapshotStamp, relativeTime, formatStamp } from '../relativeTime';
 
 // A fixed reference point: 2026-06-15 12:00:00 local time.
 const NOW = new Date(2026, 5, 15, 12, 0, 0).getTime();
@@ -36,4 +36,10 @@ test('relativeTime treats a future stamp as "just now" rather than negative', ()
 
 test('relativeTime falls back to the raw stamp when unparseable', () => {
   assert.equal(relativeTime('garbage', NOW), 'garbage');
+});
+
+test('formatStamp renders a readable absolute time and drops any suffix', () => {
+  assert.equal(formatStamp('20260615-120000'), '2026-06-15 12:00:00');
+  assert.equal(formatStamp('20260615-120000-2'), '2026-06-15 12:00:00');
+  assert.equal(formatStamp('garbage'), 'garbage');
 });

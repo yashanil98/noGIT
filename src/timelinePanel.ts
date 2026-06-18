@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { SnapshotManager, SnapshotInfo } from './snapshotManager';
-import { relativeTime } from './relativeTime';
+import { relativeTime, formatStamp } from './relativeTime';
 
 export class TimelinePanel {
   public static current: TimelinePanel | undefined;
@@ -73,7 +73,7 @@ export class TimelinePanel {
     if (!snapPath || !curPath) return;
     const left = vscode.Uri.file(snapPath);
     const right = vscode.Uri.file(curPath);
-    const title = `${rel} (${this.formatTimestamp(ts)} ↔ current)`;
+    const title = `${rel} (${formatStamp(ts)} ↔ current)`;
     await vscode.commands.executeCommand('vscode.diff', left, right, title);
   }
 
@@ -116,7 +116,7 @@ export class TimelinePanel {
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">
-              <span>${this.escapeHtml(this.formatTimestamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
+              <span>${this.escapeHtml(formatStamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
               <span>
                 <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
                 <button data-ts="${this.escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
@@ -158,15 +158,6 @@ export class TimelinePanel {
       </html>
     `;
     this.panel.webview.html = html;
-  }
-
-  // Turn a YYYYMMDD-HHmmss stamp into a readable "YYYY-MM-DD HH:MM:SS".
-  // Falls back to the raw value if it does not match the expected shape.
-  private formatTimestamp(ts: string): string {
-    const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(ts);
-    if (!m) return ts;
-    const [, y, mo, d, h, mi, s] = m;
-    return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
   }
 
   // "1 file" or "N files". Already plain text, so it needs no escaping.

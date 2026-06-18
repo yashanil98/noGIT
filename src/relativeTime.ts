@@ -9,6 +9,16 @@ export function parseSnapshotStamp(ts: string): number | undefined {
   return date.getTime();
 }
 
+// Render a snapshot stamp as a readable absolute time, "YYYY-MM-DD HH:MM:SS".
+// Falls back to the raw stamp when it does not match the expected shape. Any
+// collision suffix is dropped since it is not part of the wall-clock time.
+export function formatStamp(ts: string): string {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?$/.exec(ts);
+  if (!m) return ts;
+  const [, y, mo, d, h, mi, s] = m;
+  return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+}
+
 // Render the gap between a snapshot stamp and now as a short, human label
 // such as "just now", "5m ago", "3h ago", or "2d ago". Falls back to the raw
 // stamp when it cannot be parsed. `nowMs` is injected so the result is
