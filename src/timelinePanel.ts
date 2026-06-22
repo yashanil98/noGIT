@@ -45,6 +45,14 @@ export class TimelinePanel {
   }
 
   public static async show(context: vscode.ExtensionContext, snapMgr: SnapshotManager) {
+    // Reuse the existing panel if one is already open. Creating a new panel
+    // each time would orphan the previous one along with its change-event
+    // subscription. Running the command again just brings the panel forward.
+    if (TimelinePanel.current) {
+      TimelinePanel.current.panel.reveal(vscode.ViewColumn.Two);
+      await TimelinePanel.current.refresh();
+      return;
+    }
     const snapshots = await snapMgr.listSnapshots();
     const panel = vscode.window.createWebviewPanel(
       'nogitTimeline',
