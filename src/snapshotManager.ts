@@ -149,7 +149,6 @@ export class SnapshotManager {
       return;
     }
     const items = Array.from(this.modified);
-    this.modified.clear();
 
     if (items.length === 0) {
       if (explicit) {
@@ -158,10 +157,16 @@ export class SnapshotManager {
       return;
     }
 
+    // Clear only the files actually captured, not the whole set up front. If a
+    // write fails (or the manager is disposed mid-await), the uncaptured files
+    // stay marked and get another chance on the next snapshot rather than being
+    // silently dropped from tracking. Edits arriving during the await are also
+    // preserved this way.
     const copied = await this.writeSnapshot(items);
-    if (copied === 0) return; // nothing readable was captured
+    for (const rel of copied) this.modified.delete(rel);
+    if (copied.length === 0) return; // nothing readable was captured
     await this.pruneOldSnapshots();
-    vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied} files)`, 3000);
+    vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied.length} files)`, 3000);
   }
 
   // Capture a named checkpoint of the entire current workspace, so a restore
@@ -177,15 +182,16 @@ export class SnapshotManager {
       const rel = this.toRel(uri.fsPath);
       if (rel && !this.shouldExclude(rel)) rels.push(rel);
     }
-    const copied = await this.writeSnapshot(rels, label);
+    const copied = (await this.writeSnapshot(rels, label)).length;
     vscode.window.setStatusBarMessage(`noGIT checkpoint "${label}" saved (${copied} files)`, 4000);
     return copied;
   }
 
   // Write the given files into a new timestamped snapshot folder and record a
-  // manifest. Returns the number of files actually copied.
-  private async writeSnapshot(rels: string[], label?: string): Promise<number> {
-    if (!this.workspaceFolder) return 0;
+  // manifest. Returns the relative paths actually copied (empty when nothing
+  // could be captured).
+  private async writeSnapshot(rels: string[], label?: string): Promise<string[]> {
+    if (!this.workspaceFolder) return [];
     const snapRoot = await this.getSnapshotsRoot();
     // Pick a folder name that does not collide with an existing snapshot. Two
     // snapshots in the same second would otherwise merge into one folder and
@@ -220,7 +226,7 @@ export class SnapshotManager {
     // folder and manifest behind.
     if (copied.length === 0) {
       await fs.rm(snapDir, { recursive: true, force: true });
-      return 0;
+      return [];
     }
 
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
@@ -230,7 +236,7 @@ export class SnapshotManager {
     this.lastSnapshotTs = ts;
     this.updateStatusItem();
     this.changeEmitter.fire();
-    return copied.length;
+    return copied;
   }
 
   public async listSnapshots(): Promise<SnapshotInfo[]> {
