@@ -49,7 +49,8 @@ export class SnapshotManager {
     // A quiet status bar presence: shows when the last snapshot was taken and
     // opens the timeline on click. Refreshed after each snapshot and on a slow
     // timer so the relative time stays current.
-    this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    this.statusItem = vscode.window.createStatusBarItem('nogit.status', vscode.StatusBarAlignment.Right, 100);
+    this.statusItem.name = 'noGIT';
     this.statusItem.command = 'nogit.showTimeline';
     this.context.subscriptions.push(this.statusItem);
     this.updateStatusItem(); // shows or hides the item per the setting
