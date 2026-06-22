@@ -6,6 +6,7 @@ import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
 import { relativeTime } from './relativeTime';
 import { toWorkspaceRel, isInside } from './paths';
 import { parseManifest } from './manifest';
+import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -232,7 +233,13 @@ export class SnapshotManager {
 
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
     if (label) manifest.label = label;
-    await fs.writeFile(path.join(snapDir, 'meta.json'), JSON.stringify(manifest, null, 2), 'utf8');
+    // Write the manifest atomically: a partial meta.json (interrupted write)
+    // would otherwise be read as a malformed snapshot and, for a checkpoint,
+    // could be misclassified. Write to a temp file then rename into place.
+    const metaPath = path.join(snapDir, 'meta.json');
+    const tmpPath = path.join(snapDir, 'meta.json.tmp');
+    await fs.writeFile(tmpPath, JSON.stringify(manifest, null, 2), 'utf8');
+    await fs.rename(tmpPath, metaPath);
 
     this.lastSnapshotTs = ts;
     this.updateStatusItem();
@@ -370,18 +377,14 @@ export class SnapshotManager {
     const root = await this.getSnapshotsRoot();
     const max = vscode.workspace.getConfiguration('nogit').get<number>('maxSnapshots', 48);
     try {
-      const entries = await fs.readdir(root, { withFileTypes: true });
-      const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
-      // Named checkpoints are intentional restore points; never auto-prune
-      // them. Only automatic snapshots count against maxSnapshots.
-      const auto: string[] = [];
+      const dirEntries = await fs.readdir(root, { withFileTypes: true });
+      const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
+      const entries: SnapshotEntry[] = [];
       for (const d of dirs) {
-        if (!(await this.isCheckpoint(root, d))) auto.push(d);
+        entries.push({ name: d, isCheckpoint: await this.isCheckpoint(root, d) });
       }
-      const excess = Math.max(0, auto.length - max);
-      for (let i = 0; i < excess; i++) {
-        const dir = path.join(root, auto[i]);
-        await fs.rm(dir, { recursive: true, force: true });
+      for (const name of selectSnapshotsToPrune(entries, max)) {
+        await fs.rm(path.join(root, name), { recursive: true, force: true });
       }
     } catch {
       // ignore
@@ -391,9 +394,13 @@ export class SnapshotManager {
   private async isCheckpoint(root: string, dir: string): Promise<boolean> {
     try {
       const meta = parseManifest(await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8'));
-      return !!meta && typeof meta.label === 'string' && meta.label.length > 0;
+      if (!meta) return true; // unparseable manifest: treat as protected, never auto-prune
+      return typeof meta.label === 'string' && meta.label.length > 0;
     } catch {
-      return false;
+      // A manifest we cannot read (missing, mid-write, permission error) is
+      // treated as a protected checkpoint so pruning never deletes data it
+      // could not classify.
+      return true;
     }
   }
 
