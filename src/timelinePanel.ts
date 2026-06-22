@@ -73,7 +73,7 @@ export class TimelinePanel {
     if (!snapPath || !curPath) return;
     const left = vscode.Uri.file(snapPath);
     const right = vscode.Uri.file(curPath);
-    const title = `${rel} (${formatStamp(ts)} ↔ current)`;
+    const title = `${rel} (${formatStamp(ts)} vs current)`;
     await vscode.commands.executeCommand('vscode.diff', left, right, title);
   }
 

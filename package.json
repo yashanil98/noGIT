@@ -1,6 +1,6 @@
 {
   "name": "nogit",
-  "displayName": "noGIT — Local History Timeline",
+  "displayName": "noGIT: Local History Timeline",
   "description": "Lightweight local snapshot history with a Google Docs-style timeline for VS Code. No Git required.",
   "version": "0.4.0",
   "publisher": "yashanil98",
