@@ -69,6 +69,18 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "nogit.showTimeline",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "nogit.snapshotNow",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "nogit.checkpoint",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
           "command": "nogit.restoreFile",
           "when": "false"
         },
