@@ -116,6 +116,9 @@ Configure noGIT in your VS Code `settings.json`:
   // Show a status bar item with the time since the last snapshot.
   "nogit.showStatusBarItem": true,
 
+  // Skip files larger than this many bytes. Set to 0 for no limit.
+  "nogit.maxFileSizeBytes": 5000000,
+
   // Glob patterns to exclude from snapshots.
   "nogit.excludePatterns": [
     "**/.git/**",

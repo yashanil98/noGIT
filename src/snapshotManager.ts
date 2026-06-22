@@ -209,14 +209,21 @@ export class SnapshotManager {
     const snapDir = path.join(snapRoot, ts);
     await fs.mkdir(snapDir, { recursive: true });
 
+    const maxBytes = vscode.workspace.getConfiguration('nogit').get<number>('maxFileSizeBytes', 5000000);
     const copied: string[] = [];
     for (const rel of rels) {
       try {
         const abs = path.join(this.workspaceFolder.uri.fsPath, rel);
+        // lstat does not follow symlinks, so a symlink is reported as a link
+        // rather than its target. Skip anything that is not a regular file so
+        // a symlink can never copy data from outside the workspace into the
+        // store, and skip files over the configured size cap (0 = no limit).
+        const st = await fs.lstat(abs);
+        if (!st.isFile()) continue;
+        if (maxBytes > 0 && st.size > maxBytes) continue;
         const dest = path.join(snapDir, rel);
         await fs.mkdir(path.dirname(dest), { recursive: true });
-        const data = await fs.readFile(abs);
-        await fs.writeFile(dest, data);
+        await fs.copyFile(abs, dest);
         copied.push(rel);
       } catch (err) {
         console.error('noGIT copy failed for', rel, err);
@@ -363,9 +370,8 @@ export class SnapshotManager {
       return false;
     }
     try {
-      const data = await fs.readFile(src);
       await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.writeFile(dest, data);
+      await fs.copyFile(src, dest);
       return true;
     } catch (err) {
       console.error('noGIT restore failed for', rel, err);

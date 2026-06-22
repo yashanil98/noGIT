@@ -109,6 +109,12 @@
           "default": true,
           "description": "Show a status bar item with the time since the last snapshot."
         },
+        "nogit.maxFileSizeBytes": {
+          "type": "number",
+          "default": 5000000,
+          "minimum": 0,
+          "description": "Skip files larger than this many bytes when snapshotting. Set to 0 for no limit."
+        },
         "nogit.excludePatterns": {
           "type": "array",
           "items": {
