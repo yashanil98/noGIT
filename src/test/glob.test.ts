@@ -39,6 +39,16 @@ test('dots in the pattern are treated as literals', () => {
   assert.equal(globMatch('a.b', 'axb'), false);
 });
 
+test('repeated calls with the same pattern stay correct (cached regex is reused)', () => {
+  // The compiled regex is cached by pattern text. A cached RegExp with a
+  // global flag would carry lastIndex between calls; assert that does not
+  // happen by matching and not-matching the same pattern several times.
+  for (let i = 0; i < 3; i++) {
+    assert.equal(globMatch('**/node_modules/**', 'node_modules/a.js'), true);
+    assert.equal(globMatch('**/node_modules/**', 'src/app.ts'), false);
+  }
+});
+
 test('matchesAny applies the default exclude set', () => {
   assert.equal(matchesAny(DEFAULT_EXCLUDES, 'node_modules/react/index.js'), true);
   assert.equal(matchesAny(DEFAULT_EXCLUDES, 'dist/extension.js'), true);
