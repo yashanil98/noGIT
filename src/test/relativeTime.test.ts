@@ -30,6 +30,11 @@ test('relativeTime renders minutes, hours, and days', () => {
   assert.equal(relativeTime('20260613-120000', NOW), '2d ago');
 });
 
+test('relativeTime switches to weeks past two weeks but stays in days just under', () => {
+  assert.equal(relativeTime('20260603-120000', NOW), '12d ago'); // under 14 days
+  assert.equal(relativeTime('20260525-120000', NOW), '3w ago');  // 21 days
+});
+
 test('relativeTime treats a future stamp as "just now" rather than negative', () => {
   assert.equal(relativeTime('20260615-120030', NOW), 'just now'); // 30s in the future
 });

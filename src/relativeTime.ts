@@ -38,5 +38,8 @@ export function relativeTime(ts: string, nowMs: number): string {
   if (diffHour < 24) return `${diffHour}h ago`;
 
   const diffDay = Math.round(diffHour / 24);
-  return `${diffDay}d ago`;
+  if (diffDay < 14) return `${diffDay}d ago`;
+
+  const diffWeek = Math.round(diffDay / 7);
+  return `${diffWeek}w ago`;
 }
