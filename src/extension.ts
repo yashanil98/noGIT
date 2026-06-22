@@ -28,7 +28,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
         prompt: 'Name this checkpoint',
         placeHolder: 'e.g. before agent refactor',
       });
-      if (!name) return;
+      if (!name?.trim()) return;
       await snapshotMgr.checkpoint(name);
     }),
     vscode.commands.registerCommand('nogit.restoreFile', async (ts?: string, rel?: string) => {

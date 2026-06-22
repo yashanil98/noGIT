@@ -177,6 +177,12 @@ export class SnapshotManager {
   // of automatic pruning.
   public async checkpoint(label: string): Promise<number> {
     if (!this.workspaceFolder) return 0;
+    // A checkpoint is identified by a non-empty label, and that label is what
+    // protects it from pruning. Reject an empty or whitespace-only label so a
+    // caller cannot create a snapshot they think is a permanent checkpoint
+    // that pruning would then treat as an ordinary auto-snapshot.
+    const trimmed = label.trim();
+    if (!trimmed) return 0;
     const exclude = `{${this.activeExcludeGlobs().join(',')}}`;
     const uris = await vscode.workspace.findFiles('**/*', exclude);
     const rels: string[] = [];
@@ -184,8 +190,8 @@ export class SnapshotManager {
       const rel = this.toRel(uri.fsPath);
       if (rel && !this.shouldExclude(rel)) rels.push(rel);
     }
-    const copied = (await this.writeSnapshot(rels, label)).length;
-    vscode.window.setStatusBarMessage(`noGIT checkpoint "${label}" saved (${copied} files)`, 4000);
+    const copied = (await this.writeSnapshot(rels, trimmed)).length;
+    vscode.window.setStatusBarMessage(`noGIT checkpoint "${trimmed}" saved (${copied} files)`, 4000);
     return copied;
   }
 
