@@ -4,6 +4,7 @@ import * as path from 'path';
 import { matchesAny } from './glob';
 import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
 import { relativeTime } from './relativeTime';
+import { toWorkspaceRel, isInside } from './paths';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -255,7 +256,15 @@ export class SnapshotManager {
 
   public resolveSnapshotPath(ts: string, relPath: string): string | undefined {
     if (!this.workspaceFolder) return undefined;
-    return path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots', ts, relPath);
+    // Both arguments can originate from a manifest on disk (which an agent or
+    // user could edit) or from a headless API call, so neither is trusted. The
+    // timestamp must be a well-formed folder name, and the joined path must not
+    // escape the snapshot directory via "..".
+    if (!isValidSnapshotName(ts)) return undefined;
+    const snapDir = path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots', ts);
+    const full = path.join(snapDir, relPath);
+    if (!isInside(snapDir, full)) return undefined;
+    return full;
   }
 
   // Absolute path to a file in the current workspace, or undefined when no
@@ -329,8 +338,17 @@ export class SnapshotManager {
 
   private async copyInto(src: string, rel: string): Promise<boolean> {
     if (!this.workspaceFolder) return false;
+    const root = this.workspaceFolder.uri.fsPath;
+    const dest = path.join(root, rel);
+    // A restore writes back into the workspace. Refuse any destination that
+    // resolves outside the root, so a crafted relative path (for example from
+    // an edited manifest or a headless API call) can never overwrite files
+    // elsewhere on disk.
+    if (!isInside(root, dest)) {
+      console.error('noGIT refused out-of-workspace restore for', rel);
+      return false;
+    }
     try {
-      const dest = path.join(this.workspaceFolder.uri.fsPath, rel);
       const data = await fs.readFile(src);
       await fs.mkdir(path.dirname(dest), { recursive: true });
       await fs.writeFile(dest, data);
@@ -419,12 +437,7 @@ export class SnapshotManager {
 
   private toRel(absPath: string): string | undefined {
     if (!this.workspaceFolder) return undefined;
-    const root = this.workspaceFolder.uri.fsPath;
-    let rel = path.relative(root, absPath);
-    if (rel.startsWith('..')) return undefined;
-    // normalize to posix style for consistency
-    rel = rel.split(path.sep).join(path.posix.sep);
-    return rel;
+    return toWorkspaceRel(this.workspaceFolder.uri.fsPath, absPath);
   }
 
   private activeExcludeGlobs(): string[] {
