@@ -5,6 +5,7 @@ import { matchesAny } from './glob';
 import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
 import { relativeTime } from './relativeTime';
 import { toWorkspaceRel, isInside } from './paths';
+import { parseManifest } from './manifest';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -251,10 +252,10 @@ export class SnapshotManager {
     const results: SnapshotInfo[] = [];
     for (const d of dirs) {
       try {
-        const meta = JSON.parse(await fs.readFile(path.join(root, d, 'meta.json'), 'utf8')) as SnapshotInfo;
-        results.push(meta);
+        const meta = parseManifest(await fs.readFile(path.join(root, d, 'meta.json'), 'utf8'));
+        if (meta) results.push(meta); // skip a malformed or partial manifest
       } catch {
-        // ignore broken snapshot
+        // ignore unreadable snapshot
       }
     }
     return results;
@@ -389,10 +390,8 @@ export class SnapshotManager {
 
   private async isCheckpoint(root: string, dir: string): Promise<boolean> {
     try {
-      const meta = JSON.parse(
-        await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8')
-      ) as SnapshotInfo;
-      return typeof meta.label === 'string' && meta.label.length > 0;
+      const meta = parseManifest(await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8'));
+      return !!meta && typeof meta.label === 'string' && meta.label.length > 0;
     } catch {
       return false;
     }
