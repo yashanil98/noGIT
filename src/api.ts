@@ -26,7 +26,9 @@ export interface NoGitApi {
   // first so the restore is itself reversible. Returns true on success.
   restoreFile(timestamp: string, relPath: string): Promise<boolean>;
 
-  // Restore every file in a snapshot. Returns the number of files restored.
+  // Restore every file captured in a snapshot back to its snapshot contents.
+  // This is additive: it re-creates the captured files but does not delete
+  // files added since the snapshot. Returns the number of files restored.
   restoreSnapshot(timestamp: string): Promise<number>;
 
   // Delete a snapshot or checkpoint from the store. This is permanent and is

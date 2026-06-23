@@ -78,6 +78,8 @@ AI coding agents often rewrite many files at once, sometimes writing directly to
 
 A good workflow is to create a checkpoint before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review or undo what the agent changed.
 
+Restoring a snapshot re-creates the files it captured with their saved contents. It is additive: it does not delete files the agent added after the snapshot was taken.
+
 Other extensions can drive noGIT through its public API:
 
 ```ts

@@ -173,10 +173,10 @@ export class SnapshotManager {
     vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied.length} files)`, 3000);
   }
 
-  // Capture a named checkpoint of the entire current workspace, so a restore
-  // brings everything back to exactly this point. Useful before handing the
-  // workspace to an AI agent or any bulk operation. Checkpoints are kept out
-  // of automatic pruning.
+  // Capture a named checkpoint of the entire current workspace. Restoring it
+  // re-creates the captured files with their checkpoint contents; it does not
+  // delete files added afterward. Useful before handing the workspace to an AI
+  // agent or any bulk operation. Checkpoints are kept out of automatic pruning.
   public async checkpoint(label: string): Promise<number> {
     if (!this.workspaceFolder) return 0;
     // A checkpoint is identified by a non-empty label, and that label is what
