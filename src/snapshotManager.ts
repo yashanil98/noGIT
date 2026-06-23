@@ -271,16 +271,18 @@ export class SnapshotManager {
     } catch {
       return [];
     }
-    const results: SnapshotInfo[] = [];
-    for (const d of dirs) {
+    // Read the manifests concurrently. listSnapshots runs on the panel's
+    // auto-refresh path (every snapshot, restore, and delete), so reading each
+    // meta.json in sequence made latency scale with the snapshot count. dirs is
+    // already newest-first, so the mapped results preserve that order.
+    const metas = await Promise.all(dirs.map(async d => {
       try {
-        const meta = parseManifest(await fs.readFile(path.join(root, d, 'meta.json'), 'utf8'));
-        if (meta) results.push(meta); // skip a malformed or partial manifest
+        return parseManifest(await fs.readFile(path.join(root, d, 'meta.json'), 'utf8'));
       } catch {
-        // ignore unreadable snapshot
+        return undefined; // ignore unreadable snapshot
       }
-    }
-    return results;
+    }));
+    return metas.filter((m): m is SnapshotInfo => m !== undefined);
   }
 
   public resolveSnapshotPath(ts: string, relPath: string): string | undefined {
