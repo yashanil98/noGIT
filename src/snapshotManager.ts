@@ -332,7 +332,17 @@ export class SnapshotManager {
   // overwritten. Returns the number of files restored.
   public async restoreSnapshot(ts: string): Promise<number> {
     if (!this.workspaceFolder) return 0;
-    const snap = (await this.listSnapshots()).find(s => s.timestamp === ts);
+    // Read just this snapshot's manifest rather than scanning every snapshot to
+    // find one known timestamp. resolveSnapshotPath validates ts, so a bad
+    // value yields no path and we bail.
+    const metaPath = this.resolveSnapshotPath(ts, 'meta.json');
+    if (!metaPath) return 0;
+    let snap: SnapshotInfo | undefined;
+    try {
+      snap = parseManifest(await fs.readFile(metaPath, 'utf8'));
+    } catch {
+      snap = undefined;
+    }
     if (!snap) return 0;
     const backedUp = await this.backupBeforeRestore(snap.files);
     let restored = 0;
