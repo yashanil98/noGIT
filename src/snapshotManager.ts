@@ -7,6 +7,7 @@ import { relativeTime } from './relativeTime';
 import { toWorkspaceRel, isInside } from './paths';
 import { parseManifest } from './manifest';
 import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
+import { canRestoreSafely } from './restoreGate';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -304,12 +305,20 @@ export class SnapshotManager {
 
   // Restore a single file from a snapshot back into the workspace. The current
   // contents are captured in a fresh snapshot first so the restore is itself
-  // undoable. Returns true on success.
+  // undoable. If that backup could not capture the current file, the restore is
+  // skipped rather than destroying a version that cannot be recovered. Returns
+  // true on success.
   public async restoreFile(ts: string, rel: string): Promise<boolean> {
     if (!this.workspaceFolder) return false;
     const src = this.resolveSnapshotPath(ts, rel);
     if (!src) return false;
-    await this.backupBeforeRestore([rel]);
+    const backedUp = await this.backupBeforeRestore([rel]);
+    if (!(await this.canOverwrite(rel, backedUp))) {
+      vscode.window.showWarningMessage(
+        `noGIT: could not back up ${rel} before restoring, so the restore was skipped to avoid losing your current version.`
+      );
+      return false;
+    }
     const ok = await this.copyInto(src, rel);
     if (!ok) return false;
     vscode.window.setStatusBarMessage(`noGIT restored ${rel}`, 3000);
@@ -317,20 +326,49 @@ export class SnapshotManager {
   }
 
   // Restore every file captured in a snapshot. The current state is captured
-  // first. Returns the number of files restored.
+  // first, and any file the backup could not save is skipped rather than
+  // overwritten. Returns the number of files restored.
   public async restoreSnapshot(ts: string): Promise<number> {
     if (!this.workspaceFolder) return 0;
     const snap = (await this.listSnapshots()).find(s => s.timestamp === ts);
     if (!snap) return 0;
-    await this.backupBeforeRestore(snap.files);
+    const backedUp = await this.backupBeforeRestore(snap.files);
     let restored = 0;
+    const skipped: string[] = [];
     for (const rel of snap.files) {
       const src = this.resolveSnapshotPath(ts, rel);
       if (!src) continue;
+      if (!(await this.canOverwrite(rel, backedUp))) {
+        skipped.push(rel);
+        continue;
+      }
       if (await this.copyInto(src, rel)) restored++;
     }
-    vscode.window.setStatusBarMessage(`noGIT restored ${restored} file(s) from ${ts}`, 3000);
+    if (skipped.length > 0) {
+      vscode.window.showWarningMessage(
+        `noGIT restored ${restored} file(s) from ${ts}. Skipped ${skipped.length} that could not be backed up first: ${skipped.join(', ')}.`
+      );
+    } else {
+      vscode.window.setStatusBarMessage(`noGIT restored ${restored} file(s) from ${ts}`, 3000);
+    }
     return restored;
+  }
+
+  // Whether restoring `rel` is safe: either it does not currently exist (so
+  // there is nothing to lose) or its current contents were captured in the
+  // pre-restore backup.
+  private async canOverwrite(rel: string, backedUp: Set<string>): Promise<boolean> {
+    const abs = this.resolveWorkspacePath(rel);
+    let exists = false;
+    if (abs) {
+      try {
+        await fs.access(abs);
+        exists = true;
+      } catch {
+        exists = false;
+      }
+    }
+    return canRestoreSafely(exists, backedUp.has(rel));
   }
 
   // Delete a snapshot or checkpoint folder from the store. The timestamp is
@@ -358,10 +396,10 @@ export class SnapshotManager {
 
   // Capture the current on-disk contents of the given files into a snapshot so
   // a restore can itself be undone, even for files that were not in the pending
-  // modified set.
-  private async backupBeforeRestore(rels: string[]) {
-    for (const rel of rels) this.modified.add(rel);
-    await this.snapshotNow();
+  // modified set. Returns the set of files actually captured, so the caller can
+  // refuse to overwrite anything the backup could not save.
+  private async backupBeforeRestore(rels: string[]): Promise<Set<string>> {
+    return new Set(await this.writeSnapshot(rels));
   }
 
   private async copyInto(src: string, rel: string): Promise<boolean> {
