@@ -33,6 +33,10 @@ export class SnapshotManager {
   private statusTimer: NodeJS.Timeout | undefined;
   private lastSnapshotTs: string | undefined;
   private disposed = false;
+  // Disposables for the change tracking (document listeners + filesystem
+  // watcher). Held separately from context.subscriptions so they can be torn
+  // down when the user disables automatic snapshots, then recreated on enable.
+  private trackingDisposables: vscode.Disposable[] = [];
 
   // Fires whenever the set of stored snapshots changes (a snapshot written or
   // deleted). The timeline panel listens so it refreshes without the user
@@ -57,35 +61,32 @@ export class SnapshotManager {
     this.context.subscriptions.push(this.statusItem);
     this.updateStatusItem(); // shows or hides the item per the setting
 
-    vscode.workspace.onDidChangeTextDocument(e => {
-      if (e.document.uri.scheme !== 'file') return;
-      const rel = this.toRel(e.document.uri.fsPath);
-      if (!rel) return;
-      if (this.shouldExclude(rel)) return;
-      this.modified.add(rel);
-    }, null, this.context.subscriptions);
-
-    vscode.workspace.onDidSaveTextDocument(doc => {
-      if (doc.uri.scheme !== 'file') return;
-      const rel = this.toRel(doc.uri.fsPath);
-      if (!rel) return;
-      if (this.shouldExclude(rel)) return;
-      this.modified.add(rel);
-    }, null, this.context.subscriptions);
-
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('nogit')) {
         this.restartTimer();
+        this.refreshTracking();
         this.updateStatusItem();
       }
     }, null, this.context.subscriptions);
 
-    // Watch the filesystem directly so changes made outside the editor are
-    // captured too. AI coding agents and other tools often write files
-    // through the filesystem rather than through an editor document, which
-    // the onDidChange/onDidSave document events never see. The exclude check
-    // skips our own .nogit/ writes, so this does not feed back on itself.
-    this.watcher = vscode.workspace.createFileSystemWatcher('**/*');
+    this.refreshTracking();
+  }
+
+  // Install or remove the change-tracking listeners and filesystem watcher to
+  // match the nogit.enable setting. There is no reason to watch the whole
+  // workspace when automatic snapshots are off.
+  private refreshTracking() {
+    if (!this.workspaceFolder) return;
+    const enabled = vscode.workspace.getConfiguration('nogit').get<boolean>('enable', true);
+    const active = this.trackingDisposables.length > 0;
+    if (enabled && !active) {
+      this.installTracking();
+    } else if (!enabled && active) {
+      this.teardownTracking();
+    }
+  }
+
+  private installTracking() {
     const track = (uri: vscode.Uri) => {
       if (uri.scheme !== 'file') return;
       const rel = this.toRel(uri.fsPath);
@@ -93,9 +94,28 @@ export class SnapshotManager {
       if (this.shouldExclude(rel)) return;
       this.modified.add(rel);
     };
-    this.watcher.onDidCreate(track, null, this.context.subscriptions);
-    this.watcher.onDidChange(track, null, this.context.subscriptions);
-    this.context.subscriptions.push(this.watcher);
+
+    this.trackingDisposables.push(
+      vscode.workspace.onDidChangeTextDocument(e => track(e.document.uri)),
+      vscode.workspace.onDidSaveTextDocument(doc => track(doc.uri)),
+    );
+
+    // Watch the filesystem directly so changes made outside the editor are
+    // captured too. AI coding agents and other tools often write files
+    // through the filesystem rather than through an editor document, which
+    // the document events never see. The exclude check skips our own .nogit/
+    // writes, so this does not feed back on itself.
+    this.watcher = vscode.workspace.createFileSystemWatcher('**/*');
+    this.watcher.onDidCreate(track);
+    this.watcher.onDidChange(track);
+    this.trackingDisposables.push(this.watcher);
+  }
+
+  private teardownTracking() {
+    for (const d of this.trackingDisposables) d.dispose();
+    this.trackingDisposables = [];
+    this.watcher = undefined;
+    this.modified.clear();
   }
 
   public start() {
@@ -121,7 +141,7 @@ export class SnapshotManager {
     this.disposed = true;
     if (this.timer) clearInterval(this.timer);
     if (this.statusTimer) clearInterval(this.statusTimer);
-    this.watcher?.dispose();
+    this.teardownTracking();
     this.statusItem?.dispose();
     this.changeEmitter.dispose();
   }
