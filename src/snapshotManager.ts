@@ -46,21 +46,10 @@ export class SnapshotManager {
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    this.workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!this.workspaceFolder) {
-      vscode.window.showWarningMessage('noGIT: Open a folder/workspace to enable snapshots.');
-      return;
-    }
 
-    // A quiet status bar presence: shows when the last snapshot was taken and
-    // opens the timeline on click. Refreshed after each snapshot and on a slow
-    // timer so the relative time stays current.
-    this.statusItem = vscode.window.createStatusBarItem('nogit.status', vscode.StatusBarAlignment.Right, 100);
-    this.statusItem.name = 'noGIT';
-    this.statusItem.command = 'nogit.showTimeline';
-    this.context.subscriptions.push(this.statusItem);
-    this.updateStatusItem(); // shows or hides the item per the setting
-
+    // Listen for config and folder changes regardless of whether a folder is
+    // open yet. If the user opens a folder into an empty window after we
+    // activated, adoptFolderIfNeeded picks it up instead of staying dead.
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('nogit')) {
         this.restartTimer();
@@ -70,7 +59,53 @@ export class SnapshotManager {
       }
     }, null, this.context.subscriptions);
 
+    vscode.workspace.onDidChangeWorkspaceFolders(() => this.adoptFolderIfNeeded(),
+      null, this.context.subscriptions);
+
+    this.workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!this.workspaceFolder) {
+      vscode.window.showWarningMessage('noGIT: Open a folder/workspace to enable snapshots.');
+      return;
+    }
+    this.notifyIfMultiRoot();
+    this.setupForFolder();
+  }
+
+  // Folder-dependent setup, shared by the constructor and the late-open path.
+  private setupForFolder() {
+    // A quiet status bar presence: shows when the last snapshot was taken and
+    // opens the timeline on click. Refreshed after each snapshot and on a slow
+    // timer so the relative time stays current.
+    this.statusItem = vscode.window.createStatusBarItem('nogit.status', vscode.StatusBarAlignment.Right, 100);
+    this.statusItem.name = 'noGIT';
+    this.statusItem.command = 'nogit.showTimeline';
+    this.context.subscriptions.push(this.statusItem);
+    this.updateStatusItem(); // shows or hides the item per the setting
     this.refreshTracking();
+  }
+
+  // When a folder is opened into a window that started empty, begin operating
+  // on it. No-op once a folder has already been adopted.
+  private adoptFolderIfNeeded() {
+    if (this.workspaceFolder) return;
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) return;
+    this.workspaceFolder = folder;
+    this.notifyIfMultiRoot();
+    this.setupForFolder();
+    this.start();
+  }
+
+  // noGIT snapshots only the first workspace folder. Tell multi-root users so
+  // the limitation is visible rather than silent. Per-root capture is a
+  // separate, larger feature.
+  private notifyIfMultiRoot() {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length > 1) {
+      vscode.window.showInformationMessage(
+        `noGIT: this is a multi-root workspace. Only the first folder (${this.workspaceFolder?.name}) is being snapshotted.`
+      );
+    }
   }
 
   // Install or remove the change-tracking listeners and filesystem watcher to
