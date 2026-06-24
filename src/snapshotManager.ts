@@ -65,6 +65,7 @@ export class SnapshotManager {
       if (e.affectsConfiguration('nogit')) {
         this.restartTimer();
         this.refreshTracking();
+        this.restartStatusTimer();
         this.updateStatusItem();
       }
     }, null, this.context.subscriptions);
@@ -129,7 +130,7 @@ export class SnapshotManager {
       }
     });
     // Keep the relative time fresh without taking snapshots.
-    this.statusTimer = setInterval(() => this.updateStatusItem(), 60 * 1000);
+    this.restartStatusTimer();
 
     const enabled = vscode.workspace.getConfiguration('nogit').get<boolean>('enable', true);
     if (!enabled) return;
@@ -548,6 +549,18 @@ export class SnapshotManager {
     this.timer = setInterval(() => {
       this.snapshotNow();
     }, intervalMs);
+  }
+
+  // Run the once-a-minute status refresh only while the status item is shown.
+  // The relative time it displays does not need updating when the item is
+  // hidden, so a disabled item should not cause periodic wakeups.
+  private restartStatusTimer() {
+    if (this.statusTimer) clearInterval(this.statusTimer);
+    this.statusTimer = undefined;
+    if (!this.workspaceFolder) return;
+    const show = vscode.workspace.getConfiguration('nogit').get<boolean>('showStatusBarItem', true);
+    if (!show) return;
+    this.statusTimer = setInterval(() => this.updateStatusItem(), 60 * 1000);
   }
 
   private toRel(absPath: string): string | undefined {
