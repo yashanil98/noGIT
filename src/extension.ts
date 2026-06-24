@@ -61,7 +61,6 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
       if (choice !== 'Delete') return;
       await snapshotMgr.deleteSnapshot(ts);
     }),
-    { dispose: () => snapshotMgr?.dispose() }
   );
 
   // Public API for other extensions and agents. These call the manager
@@ -78,6 +77,13 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
   return api;
 }
 
-export function deactivate() {
-  snapshotMgr?.dispose();
+export async function deactivate() {
+  // Capture any edits made since the last interval tick before shutting down,
+  // so closing the window does not lose work. snapshotNow is a no-op when
+  // nothing is pending.
+  try {
+    await snapshotMgr?.snapshotNow();
+  } finally {
+    snapshotMgr?.dispose();
+  }
 }

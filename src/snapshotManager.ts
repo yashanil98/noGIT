@@ -32,6 +32,7 @@ export class SnapshotManager {
   private statusItem: vscode.StatusBarItem | undefined;
   private statusTimer: NodeJS.Timeout | undefined;
   private lastSnapshotTs: string | undefined;
+  private disposed = false;
 
   // Fires whenever the set of stored snapshots changes (a snapshot written or
   // deleted). The timeline panel listens so it refreshes without the user
@@ -116,6 +117,8 @@ export class SnapshotManager {
   }
 
   public dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     if (this.timer) clearInterval(this.timer);
     if (this.statusTimer) clearInterval(this.statusTimer);
     this.watcher?.dispose();
