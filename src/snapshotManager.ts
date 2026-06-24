@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { matchesAny } from './glob';
 import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
-import { relativeTime } from './relativeTime';
+import { relativeTime, formatStamp } from './relativeTime';
 import { toWorkspaceRel, isInside } from './paths';
 import { parseManifest } from './manifest';
 import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
@@ -166,7 +166,7 @@ export class SnapshotManager {
     // stay marked and get another chance on the next snapshot rather than being
     // silently dropped from tracking. Edits arriving during the await are also
     // preserved this way.
-    const copied = await this.writeSnapshot(items);
+    const { files: copied } = await this.writeSnapshot(items);
     for (const rel of copied) this.modified.delete(rel);
     if (copied.length === 0) return; // nothing readable was captured
     await this.pruneOldSnapshots();
@@ -192,16 +192,16 @@ export class SnapshotManager {
       const rel = this.toRel(uri.fsPath);
       if (rel && !this.shouldExclude(rel)) rels.push(rel);
     }
-    const copied = (await this.writeSnapshot(rels, trimmed)).length;
+    const copied = (await this.writeSnapshot(rels, trimmed)).files.length;
     vscode.window.setStatusBarMessage(`noGIT checkpoint "${trimmed}" saved (${copied} files)`, 4000);
     return copied;
   }
 
   // Write the given files into a new timestamped snapshot folder and record a
-  // manifest. Returns the relative paths actually copied (empty when nothing
-  // could be captured).
-  private async writeSnapshot(rels: string[], label?: string): Promise<string[]> {
-    if (!this.workspaceFolder) return [];
+  // manifest. Returns the snapshot timestamp (undefined when nothing could be
+  // captured and no folder was kept) and the relative paths actually copied.
+  private async writeSnapshot(rels: string[], label?: string): Promise<{ ts: string | undefined; files: string[] }> {
+    if (!this.workspaceFolder) return { ts: undefined, files: [] };
     const snapRoot = await this.getSnapshotsRoot();
     // Pick a folder name that does not collide with an existing snapshot. Two
     // snapshots in the same second would otherwise merge into one folder and
@@ -243,7 +243,7 @@ export class SnapshotManager {
     // folder and manifest behind.
     if (copied.length === 0) {
       await fs.rm(snapDir, { recursive: true, force: true });
-      return [];
+      return { ts: undefined, files: [] };
     }
 
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
@@ -259,7 +259,7 @@ export class SnapshotManager {
     this.lastSnapshotTs = ts;
     this.updateStatusItem();
     this.changeEmitter.fire();
-    return copied;
+    return { ts, files: copied };
   }
 
   public async listSnapshots(): Promise<SnapshotInfo[]> {
@@ -314,8 +314,8 @@ export class SnapshotManager {
     if (!this.workspaceFolder) return false;
     const src = this.resolveSnapshotPath(ts, rel);
     if (!src) return false;
-    const backedUp = await this.backupBeforeRestore([rel]);
-    if (!(await this.canOverwrite(rel, backedUp))) {
+    const backup = await this.backupBeforeRestore([rel]);
+    if (!(await this.canOverwrite(rel, backup.files))) {
       vscode.window.showWarningMessage(
         `noGIT: could not back up ${rel} before restoring, so the restore was skipped to avoid losing your current version.`
       );
@@ -323,7 +323,7 @@ export class SnapshotManager {
     }
     const ok = await this.copyInto(src, rel);
     if (!ok) return false;
-    vscode.window.setStatusBarMessage(`noGIT restored ${rel}`, 3000);
+    this.offerUndo(`noGIT restored ${rel}.`, backup.ts);
     return true;
   }
 
@@ -344,13 +344,13 @@ export class SnapshotManager {
       snap = undefined;
     }
     if (!snap) return 0;
-    const backedUp = await this.backupBeforeRestore(snap.files);
+    const backup = await this.backupBeforeRestore(snap.files);
     let restored = 0;
     const skipped: string[] = [];
     for (const rel of snap.files) {
       const src = this.resolveSnapshotPath(ts, rel);
       if (!src) continue;
-      if (!(await this.canOverwrite(rel, backedUp))) {
+      if (!(await this.canOverwrite(rel, backup.files))) {
         skipped.push(rel);
         continue;
       }
@@ -361,7 +361,7 @@ export class SnapshotManager {
         `noGIT restored ${restored} file(s) from ${ts}. Skipped ${skipped.length} that could not be backed up first: ${skipped.join(', ')}.`
       );
     } else {
-      vscode.window.setStatusBarMessage(`noGIT restored ${restored} file(s) from ${ts}`, 3000);
+      this.offerUndo(`noGIT restored ${restored} file(s) from ${formatStamp(ts)}.`, backup.ts);
     }
     return restored;
   }
@@ -381,6 +381,21 @@ export class SnapshotManager {
       }
     }
     return canRestoreSafely(exists, backedUp.has(rel));
+  }
+
+  // Tell the user a restore succeeded and, when a pre-restore backup was taken,
+  // offer one click to undo by restoring from that backup. Without a backup
+  // (nothing needed capturing) there is nothing to undo, so just report.
+  private offerUndo(message: string, backupTs: string | undefined) {
+    if (!backupTs) {
+      vscode.window.setStatusBarMessage(message, 3000);
+      return;
+    }
+    void vscode.window
+      .showInformationMessage(`${message} Your previous version was snapshotted.`, 'Undo')
+      .then(pick => {
+        if (pick === 'Undo') void this.restoreSnapshot(backupTs);
+      });
   }
 
   // Delete a snapshot or checkpoint folder from the store. The timestamp is
@@ -408,10 +423,12 @@ export class SnapshotManager {
 
   // Capture the current on-disk contents of the given files into a snapshot so
   // a restore can itself be undone, even for files that were not in the pending
-  // modified set. Returns the set of files actually captured, so the caller can
-  // refuse to overwrite anything the backup could not save.
-  private async backupBeforeRestore(rels: string[]): Promise<Set<string>> {
-    return new Set(await this.writeSnapshot(rels));
+  // modified set. Returns the backup's timestamp (undefined if nothing was
+  // captured) and the set of files actually captured, so the caller can refuse
+  // to overwrite anything the backup could not save and can offer an undo.
+  private async backupBeforeRestore(rels: string[]): Promise<{ ts: string | undefined; files: Set<string> }> {
+    const { ts, files } = await this.writeSnapshot(rels);
+    return { ts, files: new Set(files) };
   }
 
   private async copyInto(src: string, rel: string): Promise<boolean> {
