@@ -244,7 +244,12 @@ export class SnapshotManager {
     // that pruning would then treat as an ordinary auto-snapshot.
     const trimmed = label.trim();
     if (!trimmed) return 0;
-    const exclude = `{${this.activeExcludeGlobs().join(',')}}`;
+    // shouldExclude below is the single source of truth for exclusions, using
+    // the same matcher as auto-snapshots. Pass findFiles only a hint to skip
+    // our own snapshot store (which can be large) rather than a brace glob
+    // built from the user patterns, whose separate glob engine mishandles
+    // single-pattern, empty, and comma-containing cases.
+    const exclude = `**/${this.snapshotFolderName()}/**`;
     const uris = await vscode.workspace.findFiles('**/*', exclude);
     const rels: string[] = [];
     for (const uri of uris) {
