@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
+import * as crypto from 'crypto';
 import { SnapshotManager, SnapshotInfo } from './snapshotManager';
 import { relativeTime, formatStamp } from './relativeTime';
 import { escapeHtml } from './html';
@@ -18,26 +18,38 @@ export class TimelinePanel {
     this.snapMgr.onDidChangeSnapshots(() => this.refresh(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(async (msg) => {
-      if (msg?.type === 'openPreview') {
-        const p = await this.snapMgr.resolveSnapshotPath(msg.ts, msg.rel);
+      // The webview is a lower-trust boundary. Accept only a string type and
+      // treat ts/rel as strings or nothing, so a malformed message can never
+      // reach a path or command with an unexpected shape.
+      if (!msg || typeof msg.type !== 'string') return;
+      const ts = typeof msg.ts === 'string' ? msg.ts : undefined;
+      const rel = typeof msg.rel === 'string' ? msg.rel : undefined;
+
+      if (msg.type === 'openPreview') {
+        if (!ts || !rel) return;
+        const p = await this.snapMgr.resolveSnapshotPath(ts, rel);
         if (!p) return;
         const uri = vscode.Uri.file(p);
         await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
-      } else if (msg?.type === 'checkpoint') {
+      } else if (msg.type === 'checkpoint') {
         await vscode.commands.executeCommand('nogit.checkpoint');
         this.refresh();
-      } else if (msg?.type === 'diff') {
-        await this.openDiff(msg.ts, msg.rel);
-      } else if (msg?.type === 'restoreFile') {
-        await vscode.commands.executeCommand('nogit.restoreFile', msg.ts, msg.rel);
+      } else if (msg.type === 'diff') {
+        if (!ts || !rel) return;
+        await this.openDiff(ts, rel);
+      } else if (msg.type === 'restoreFile') {
+        if (!ts || !rel) return;
+        await vscode.commands.executeCommand('nogit.restoreFile', ts, rel);
         this.refresh();
-      } else if (msg?.type === 'restoreSnapshot') {
-        await vscode.commands.executeCommand('nogit.restoreSnapshot', msg.ts);
+      } else if (msg.type === 'restoreSnapshot') {
+        if (!ts) return;
+        await vscode.commands.executeCommand('nogit.restoreSnapshot', ts);
         this.refresh();
-      } else if (msg?.type === 'deleteSnapshot') {
-        await vscode.commands.executeCommand('nogit.deleteSnapshot', msg.ts);
+      } else if (msg.type === 'deleteSnapshot') {
+        if (!ts) return;
+        await vscode.commands.executeCommand('nogit.deleteSnapshot', ts);
         this.refresh();
-      } else if (msg?.type === 'refresh') {
+      } else if (msg.type === 'refresh') {
         this.refresh();
       }
     }, null, this.disposables);
@@ -109,13 +121,17 @@ export class TimelinePanel {
     const webview = this.panel.webview;
     const snapshots = this.snapshots;
     const now = Date.now();
+    // A per-render nonce lets the one inline script run while keeping a strict
+    // script-src, so any future unescaped interpolation cannot execute as a
+    // script the way 'unsafe-inline' would allow.
+    const nonce = crypto.randomBytes(16).toString('hex');
 
     const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; script-src 'unsafe-inline' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource};" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; script-src 'nonce-${nonce}'; style-src 'unsafe-inline' ${webview.cspSource};" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>noGIT Timeline</title>
         <style>
@@ -162,7 +178,7 @@ export class TimelinePanel {
             `).join('') || '<div class="empty">No files captured in this snapshot.</div>'}
           </div>
         `).join('')}
-        <script>
+        <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           const send = (type, btn) => vscode.postMessage({
             type,
