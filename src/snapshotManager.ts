@@ -10,6 +10,7 @@ import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
 import { canRestoreSafely } from './restoreGate';
 import { buildRestoreSummary } from './restoreSummary';
 import { SerialQueue } from './serialQueue';
+import { isRealPathInside } from './realpath';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -514,10 +515,23 @@ export class SnapshotManager {
     // A restore writes back into the workspace. Refuse any destination that
     // resolves outside the root, so a crafted relative path (for example from
     // an edited manifest or a headless API call) can never overwrite files
-    // elsewhere on disk.
-    if (!isInside(root, dest)) {
+    // elsewhere on disk. The lexical check is cheap and rejects "..". The
+    // realpath check then catches a symlinked directory component that is
+    // lexically inside the root but resolves outside it.
+    if (!isInside(root, dest) || !(await isRealPathInside(root, dest))) {
       console.error('noGIT refused out-of-workspace restore for', rel);
       return false;
+    }
+    // Refuse to follow a symlink at the destination itself, so copyFile cannot
+    // overwrite whatever the link targets.
+    try {
+      const st = await fs.lstat(dest);
+      if (st.isSymbolicLink()) {
+        console.error('noGIT refused to overwrite a symlink for', rel);
+        return false;
+      }
+    } catch {
+      // dest does not exist yet; nothing to follow.
     }
     try {
       await fs.mkdir(path.dirname(dest), { recursive: true });
