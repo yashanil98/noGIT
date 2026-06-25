@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as path from 'path';
-import { toWorkspaceRel, isInside } from '../paths';
+import { toWorkspaceRel, isInside, isWithinSnapshotFolder } from '../paths';
 
 const ROOT = path.sep === '\\' ? 'C:\\work\\proj' : '/work/proj';
 const J = (...parts: string[]) => path.join(ROOT, ...parts);
@@ -30,4 +30,15 @@ test('isInside accepts the root and nested paths, rejects escapes', () => {
   assert.equal(isInside(ROOT, ROOT), true);
   assert.equal(isInside(ROOT, J('..', 'x')), false);
   assert.equal(isInside(ROOT, ROOT + '-evil'), false);
+});
+
+test('isWithinSnapshotFolder matches the folder and its children only', () => {
+  assert.equal(isWithinSnapshotFolder('.nogit', '.nogit'), true);
+  assert.equal(isWithinSnapshotFolder('.nogit/snapshots/x', '.nogit'), true);
+  // Siblings that merely share the name prefix must not count as inside.
+  assert.equal(isWithinSnapshotFolder('.nogitignore', '.nogit'), false);
+  assert.equal(isWithinSnapshotFolder('.nogitX/file', '.nogit'), false);
+  assert.equal(isWithinSnapshotFolder('src/app.ts', '.nogit'), false);
+  // Honors a custom folder name.
+  assert.equal(isWithinSnapshotFolder('history/a', 'history'), true);
 });

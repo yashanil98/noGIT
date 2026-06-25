@@ -4,7 +4,7 @@ import * as path from 'path';
 import { matchesAny } from './glob';
 import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
 import { relativeTime, formatStamp } from './relativeTime';
-import { toWorkspaceRel, isInside } from './paths';
+import { toWorkspaceRel, isInside, isWithinSnapshotFolder } from './paths';
 import { parseManifest } from './manifest';
 import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
 import { canRestoreSafely } from './restoreGate';
@@ -659,8 +659,7 @@ export class SnapshotManager {
     // filesystem watcher fires on snapshot writes, so without this guard a
     // custom excludePatterns that drops the .nogit entry would make noGIT
     // snapshot its own snapshots in a loop.
-    const folder = this.snapshotFolderName();
-    if (rel === folder || rel.startsWith(`${folder}/`)) return true;
+    if (isWithinSnapshotFolder(rel, this.snapshotFolderName())) return true;
 
     return matchesAny(this.activeExcludeGlobs(), rel);
   }
