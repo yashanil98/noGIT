@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { SnapshotManager, SnapshotInfo } from './snapshotManager';
 import { relativeTime, formatStamp } from './relativeTime';
+import { escapeHtml } from './html';
 
 export class TimelinePanel {
   public static current: TimelinePanel | undefined;
@@ -124,19 +125,19 @@ export class TimelinePanel {
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">
-              <span>${this.escapeHtml(formatStamp(s.timestamp))}<span class="rel">${this.escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${this.escapeHtml(s.label)}</span>` : ''}</span>
+              <span>${escapeHtml(formatStamp(s.timestamp))}<span class="rel">${escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${escapeHtml(s.label)}</span>` : ''}</span>
               <span>
-                <button data-ts="${this.escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
-                <button data-ts="${this.escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
+                <button data-ts="${escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
+                <button data-ts="${escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
               </span>
             </div>
             ${s.files.map(rel => `
               <div class="file">
-                <span>${this.escapeHtml(rel)}</span>
+                <span>${escapeHtml(rel)}</span>
                 <span>
-                  <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="open">Open</button>
-                  <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="diff">Diff</button>
-                  <button data-ts="${this.escapeHtml(s.timestamp)}" data-rel="${this.escapeHtml(rel)}" class="restore">Restore</button>
+                  <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="open">Open</button>
+                  <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="diff">Diff</button>
+                  <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="restore">Restore</button>
                 </span>
               </div>
             `).join('') || '<div class="empty">No files captured in this snapshot.</div>'}
@@ -173,12 +174,4 @@ export class TimelinePanel {
     return `${n} ${n === 1 ? 'file' : 'files'}`;
   }
 
-  private escapeHtml(value: string): string {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
 }
