@@ -11,6 +11,7 @@ import { canRestoreSafely } from './restoreGate';
 import { buildRestoreSummary } from './restoreSummary';
 import { SerialQueue } from './serialQueue';
 import { isRealPathInside } from './realpath';
+import { statusBarLabel } from './statusLabel';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -202,10 +203,9 @@ export class SnapshotManager {
     const when = this.lastSnapshotTs
       ? relativeTime(this.lastSnapshotTs, Date.now())
       : undefined;
-    this.statusItem.text = when ? `$(history) noGIT: ${when}` : '$(history) noGIT';
-    this.statusItem.tooltip = when
-      ? `Last snapshot ${when}. Click to open the timeline.`
-      : 'noGIT: no snapshots yet. Click to open the timeline.';
+    const { text, tooltip } = statusBarLabel(when);
+    this.statusItem.text = text;
+    this.statusItem.tooltip = tooltip;
     this.statusItem.show();
   }
 
