@@ -8,6 +8,7 @@ import { toWorkspaceRel, isInside } from './paths';
 import { parseManifest } from './manifest';
 import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
 import { canRestoreSafely } from './restoreGate';
+import { buildRestoreSummary } from './restoreSummary';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -420,12 +421,11 @@ export class SnapshotManager {
       }
       if (await this.copyInto(src, rel)) restored++;
     }
-    if (skipped.length > 0) {
-      vscode.window.showWarningMessage(
-        `noGIT restored ${restored} file(s) from ${ts}. Skipped ${skipped.length} that could not be backed up first: ${skipped.join(', ')}.`
-      );
+    const summary = buildRestoreSummary(formatStamp(ts), restored, skipped);
+    if (summary.offerUndo) {
+      this.offerUndo(summary.message, backup.ts);
     } else {
-      this.offerUndo(`noGIT restored ${restored} file(s) from ${formatStamp(ts)}.`, backup.ts);
+      vscode.window.showWarningMessage(summary.message);
     }
     return restored;
   }
