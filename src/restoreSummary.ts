@@ -14,13 +14,13 @@ export function buildRestoreSummary(stamp: string, restored: number, skipped: st
   if (skipped.length > 0) {
     return {
       message:
-        `noGIT restored ${restored} file(s) from ${stamp}. ` +
+        `noGIT: restored ${restored} file(s) from ${stamp}. ` +
         `Skipped ${skipped.length} that could not be backed up first: ${skipped.join(', ')}.`,
       offerUndo: false,
     };
   }
   return {
-    message: `noGIT restored ${restored} file(s) from ${stamp}.`,
+    message: `noGIT: restored ${restored} file(s) from ${stamp}.`,
     offerUndo: true,
   };
 }

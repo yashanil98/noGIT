@@ -46,9 +46,9 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
       const choice = await vscode.window.showWarningMessage(
         `Restore all files from the snapshot taken ${formatStamp(ts)}? Your current versions are snapshotted first so this can be undone.`,
         { modal: true },
-        'Restore All'
+        'Restore all files'
       );
-      if (choice !== 'Restore All') return;
+      if (choice !== 'Restore all files') return;
       await snapshotMgr.restoreSnapshot(ts);
     }),
     vscode.commands.registerCommand('nogit.deleteSnapshot', async (ts?: string) => {

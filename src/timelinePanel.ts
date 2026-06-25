@@ -162,7 +162,7 @@ export class TimelinePanel {
             <div class="ts">
               <span>${escapeHtml(formatStamp(s.timestamp))}<span class="rel">${escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${escapeHtml(s.label)}</span>` : ''}</span>
               <span>
-                <button data-ts="${escapeHtml(s.timestamp)}" class="restore-snap">Restore all</button>
+                <button data-ts="${escapeHtml(s.timestamp)}" class="restore-snap">Restore all files</button>
                 <button data-ts="${escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
               </span>
             </div>

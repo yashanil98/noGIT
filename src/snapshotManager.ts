@@ -236,7 +236,7 @@ export class SnapshotManager {
     for (const rel of copied) this.modified.delete(rel);
     if (copied.length === 0) return; // nothing readable was captured
     await this.pruneOldSnapshots();
-    vscode.window.setStatusBarMessage(`noGIT snapshot saved (${copied.length} files)`, 3000);
+    vscode.window.setStatusBarMessage(`noGIT: snapshot saved (${copied.length} files)`, 3000);
   }
 
   // Capture a named checkpoint of the entire current workspace. Restoring it
@@ -264,7 +264,7 @@ export class SnapshotManager {
       if (rel && !this.shouldExclude(rel)) rels.push(rel);
     }
     const copied = (await this.writeSnapshot(rels, trimmed)).files.length;
-    vscode.window.setStatusBarMessage(`noGIT checkpoint "${trimmed}" saved (${copied} files)`, 4000);
+    vscode.window.setStatusBarMessage(`noGIT: checkpoint "${trimmed}" saved (${copied} files)`, 4000);
     return copied;
   }
 
@@ -409,7 +409,7 @@ export class SnapshotManager {
     }
     const ok = await this.copyInto(src, rel);
     if (!ok) return false;
-    this.offerUndo(`noGIT restored ${rel}.`, backup.ts);
+    this.offerUndo(`noGIT: restored ${rel}.`, backup.ts);
     return true;
   }
 
