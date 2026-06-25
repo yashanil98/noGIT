@@ -36,6 +36,10 @@ export class SnapshotManager {
   private statusTimer: NodeJS.Timeout | undefined;
   private lastSnapshotTs: string | undefined;
   private disposed = false;
+  // The backup snapshot a currently-shown "Undo" notification points at. It is
+  // an unlabelled snapshot, so without this it could be pruned by a later
+  // snapshot before the user clicks Undo, leaving Undo to restore nothing.
+  private pendingUndoTs: string | undefined;
   // Disposables for the change tracking (document listeners + filesystem
   // watcher). Held separately from context.subscriptions so they can be torn
   // down when the user disables automatic snapshots, then recreated on enable.
@@ -472,9 +476,12 @@ export class SnapshotManager {
       vscode.window.setStatusBarMessage(message, 3000);
       return;
     }
+    // Protect this backup from pruning while the notification is on screen.
+    this.pendingUndoTs = backupTs;
     void vscode.window
       .showInformationMessage(`${message} Your previous version was snapshotted.`, 'Undo')
       .then(pick => {
+        if (this.pendingUndoTs === backupTs) this.pendingUndoTs = undefined;
         if (pick === 'Undo') void this.restoreSnapshot(backupTs);
       });
   }
@@ -555,7 +562,10 @@ export class SnapshotManager {
       const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
       const entries: SnapshotEntry[] = [];
       for (const d of dirs) {
-        entries.push({ name: d, isCheckpoint: await this.isCheckpoint(root, d) });
+        // Treat the pending-undo backup as protected so a click on Undo still
+        // finds it. isCheckpoint already protects labelled checkpoints.
+        const protectedEntry = d === this.pendingUndoTs || await this.isCheckpoint(root, d);
+        entries.push({ name: d, isCheckpoint: protectedEntry });
       }
       for (const name of selectSnapshotsToPrune(entries, max)) {
         await fs.rm(path.join(root, name), { recursive: true, force: true });
