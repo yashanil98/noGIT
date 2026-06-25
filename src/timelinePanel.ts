@@ -75,13 +75,32 @@ export class TimelinePanel {
   }
 
   // Open the native diff editor comparing the snapshot version (left) against
-  // the current working file (right).
+  // the current working file (right). When the current file no longer exists
+  // (a common case after an agent deletes it), a diff would just show a "file
+  // not found" pane, so open the snapshot version read-only instead and point
+  // the user at Restore.
   private async openDiff(ts: string, rel: string) {
     const snapPath = await this.snapMgr.resolveSnapshotPath(ts, rel);
     const curPath = this.snapMgr.resolveWorkspacePath(rel);
     if (!snapPath || !curPath) return;
     const left = vscode.Uri.file(snapPath);
     const right = vscode.Uri.file(curPath);
+
+    let currentExists = true;
+    try {
+      await vscode.workspace.fs.stat(right);
+    } catch {
+      currentExists = false;
+    }
+
+    if (!currentExists) {
+      await vscode.commands.executeCommand('vscode.open', left, { preview: true });
+      vscode.window.showInformationMessage(
+        `${rel} no longer exists in the workspace. Showing the snapshot version. Use Restore to bring it back.`
+      );
+      return;
+    }
+
     const title = `${rel} (${formatStamp(ts)} vs current)`;
     await vscode.commands.executeCommand('vscode.diff', left, right, title);
   }
