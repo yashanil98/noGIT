@@ -363,16 +363,20 @@ export class SnapshotManager {
     return metas.filter((m): m is SnapshotInfo => m !== undefined);
   }
 
-  public resolveSnapshotPath(ts: string, relPath: string): string | undefined {
+  public async resolveSnapshotPath(ts: string, relPath: string): Promise<string | undefined> {
     if (!this.workspaceFolder) return undefined;
     // Both arguments can originate from a manifest on disk (which an agent or
     // user could edit) or from a headless API call, so neither is trusted. The
     // timestamp must be a well-formed folder name, and the joined path must not
-    // escape the snapshot directory via "..".
+    // escape the snapshot directory via ".." (lexical) or via a symlinked
+    // component that resolves outside it (realpath). Without the realpath check
+    // a symlink planted in the store plus a crafted manifest would turn Open,
+    // Diff, and restore into an arbitrary-file read.
     if (!isValidSnapshotName(ts)) return undefined;
     const snapDir = path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots', ts);
     const full = path.join(snapDir, relPath);
     if (!isInside(snapDir, full)) return undefined;
+    if (!(await isRealPathInside(snapDir, full))) return undefined;
     return full;
   }
 
@@ -390,7 +394,7 @@ export class SnapshotManager {
   // true on success.
   public async restoreFile(ts: string, rel: string): Promise<boolean> {
     if (!this.workspaceFolder) return false;
-    const src = this.resolveSnapshotPath(ts, rel);
+    const src = await this.resolveSnapshotPath(ts, rel);
     if (!src) return false;
     const backup = await this.backupBeforeRestore([rel]);
     if (!(await this.canOverwrite(rel, backup.files))) {
@@ -413,7 +417,7 @@ export class SnapshotManager {
     // Read just this snapshot's manifest rather than scanning every snapshot to
     // find one known timestamp. resolveSnapshotPath validates ts, so a bad
     // value yields no path and we bail.
-    const metaPath = this.resolveSnapshotPath(ts, 'meta.json');
+    const metaPath = await this.resolveSnapshotPath(ts, 'meta.json');
     if (!metaPath) return 0;
     let snap: SnapshotInfo | undefined;
     try {
@@ -426,7 +430,7 @@ export class SnapshotManager {
     let restored = 0;
     const skipped: string[] = [];
     for (const rel of snap.files) {
-      const src = this.resolveSnapshotPath(ts, rel);
+      const src = await this.resolveSnapshotPath(ts, rel);
       if (!src) continue;
       if (!(await this.canOverwrite(rel, backup.files))) {
         skipped.push(rel);

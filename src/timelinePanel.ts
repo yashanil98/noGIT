@@ -19,7 +19,7 @@ export class TimelinePanel {
 
     this.panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg?.type === 'openPreview') {
-        const p = this.snapMgr.resolveSnapshotPath(msg.ts, msg.rel);
+        const p = await this.snapMgr.resolveSnapshotPath(msg.ts, msg.rel);
         if (!p) return;
         const uri = vscode.Uri.file(p);
         await vscode.commands.executeCommand('vscode.open', uri, { preview: true });
@@ -77,7 +77,7 @@ export class TimelinePanel {
   // Open the native diff editor comparing the snapshot version (left) against
   // the current working file (right).
   private async openDiff(ts: string, rel: string) {
-    const snapPath = this.snapMgr.resolveSnapshotPath(ts, rel);
+    const snapPath = await this.snapMgr.resolveSnapshotPath(ts, rel);
     const curPath = this.snapMgr.resolveWorkspacePath(rel);
     if (!snapPath || !curPath) return;
     const left = vscode.Uri.file(snapPath);
