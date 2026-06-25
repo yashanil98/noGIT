@@ -9,6 +9,7 @@ import { parseManifest } from './manifest';
 import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
 import { canRestoreSafely } from './restoreGate';
 import { buildRestoreSummary } from './restoreSummary';
+import { SerialQueue } from './serialQueue';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -262,10 +263,21 @@ export class SnapshotManager {
     return copied;
   }
 
+  // Serialize snapshot writes. Each write reads the existing folder listing,
+  // picks a non-colliding name, then creates the folder; without serialization
+  // two concurrent writes (the interval timer firing during a restore backup,
+  // two API calls, a shutdown flush overlapping a tick) could read the same
+  // listing, pick the same name, and have the second clobber the first's
+  // manifest.
+  private writeQueue = new SerialQueue();
+  private writeSnapshot(rels: string[], label?: string): Promise<{ ts: string | undefined; files: string[] }> {
+    return this.writeQueue.run(() => this.writeSnapshotImpl(rels, label));
+  }
+
   // Write the given files into a new timestamped snapshot folder and record a
   // manifest. Returns the snapshot timestamp (undefined when nothing could be
   // captured and no folder was kept) and the relative paths actually copied.
-  private async writeSnapshot(rels: string[], label?: string): Promise<{ ts: string | undefined; files: string[] }> {
+  private async writeSnapshotImpl(rels: string[], label?: string): Promise<{ ts: string | undefined; files: string[] }> {
     if (!this.workspaceFolder) return { ts: undefined, files: [] };
     const snapRoot = await this.getSnapshotsRoot();
     // Pick a folder name that does not collide with an existing snapshot. Two
