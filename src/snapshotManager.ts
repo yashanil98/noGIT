@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { matchesAny } from './glob';
 import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
-import { relativeTime, formatStamp } from './relativeTime';
+import { relativeTime, formatStamp, formatTimestamp } from './relativeTime';
 import { toWorkspaceRel, isInside, isWithinSnapshotFolder } from './paths';
 import { parseManifest } from './manifest';
 import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
@@ -665,9 +665,6 @@ export class SnapshotManager {
   }
 
   private makeTimestamp(): string {
-    const d = new Date();
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const ts = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-    return ts;
+    return formatTimestamp(new Date());
   }
 }

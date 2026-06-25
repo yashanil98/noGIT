@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSnapshotStamp, relativeTime, formatStamp } from '../relativeTime';
+import { parseSnapshotStamp, relativeTime, formatStamp, formatTimestamp } from '../relativeTime';
+import { isValidSnapshotName } from '../snapshotName';
 
 // A fixed reference point: 2026-06-15 12:00:00 local time.
 const NOW = new Date(2026, 5, 15, 12, 0, 0).getTime();
@@ -47,4 +48,16 @@ test('formatStamp renders a readable absolute time and drops any suffix', () => 
   assert.equal(formatStamp('20260615-120000'), '2026-06-15 12:00:00');
   assert.equal(formatStamp('20260615-120000-2'), '2026-06-15 12:00:00');
   assert.equal(formatStamp('garbage'), 'garbage');
+});
+
+test('formatTimestamp zero-pads and uses a one-based month', () => {
+  // January (month index 0) must encode as 01, single digits must pad.
+  assert.equal(formatTimestamp(new Date(2026, 0, 5, 3, 7, 9)), '20260105-030709');
+});
+
+test('formatTimestamp output is a valid snapshot name and round-trips', () => {
+  const d = new Date(2026, 5, 15, 12, 0, 0);
+  const ts = formatTimestamp(d);
+  assert.equal(isValidSnapshotName(ts), true);
+  assert.equal(parseSnapshotStamp(ts), d.getTime());
 });

@@ -9,6 +9,16 @@ export function parseSnapshotStamp(ts: string): number | undefined {
   return date.getTime();
 }
 
+// Encode a Date as a snapshot folder name, "YYYYMMDD-HHmmss", in local time.
+// This is the name every snapshot folder, the collision check, and parsing all
+// depend on, so the month offset and zero-padding must be exact: a slip would
+// still pass isValidSnapshotName while encoding the wrong time.
+export function formatTimestamp(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 // Render a snapshot stamp as a readable absolute time, "YYYY-MM-DD HH:MM:SS".
 // Falls back to the raw stamp when it does not match the expected shape. Any
 // collision suffix is dropped since it is not part of the wall-clock time.
