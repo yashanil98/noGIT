@@ -156,7 +156,7 @@ export class TimelinePanel {
             <button id="refresh">Refresh</button>
           </span>
         </div>
-        ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. Make some edits or run <code>noGIT: Snapshot Now</code>.</div>` : ''}
+        ${snapshots.length === 0 ? `<div class="empty">No snapshots yet. noGIT snapshots changed files automatically on a timer. To capture a point right now, edit a file and run <code>noGIT: Snapshot Now</code>, or use the Checkpoint button above to save the whole workspace.</div>` : ''}
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">

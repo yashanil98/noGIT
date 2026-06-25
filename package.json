@@ -33,7 +33,12 @@
     "snapshot",
     "timeline",
     "version control",
-    "backup"
+    "backup",
+    "ai",
+    "agent",
+    "ai agent",
+    "undo",
+    "file history"
   ],
   "activationEvents": [
     "onStartupFinished"
