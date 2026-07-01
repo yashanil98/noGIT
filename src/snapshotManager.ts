@@ -213,11 +213,12 @@ export class SnapshotManager {
   // Snapshot the files modified since the last snapshot. When `explicit` is
   // set (the user ran the command directly), surface a message if there was
   // nothing to capture, so a manual trigger never appears to do nothing. The
-  // timer and the public API leave it false and stay silent.
-  public async snapshotNow(explicit = false) {
+  // timer and the public API leave it false and stay silent. Returns the new
+  // snapshot's timestamp, or undefined when nothing was captured.
+  public async snapshotNow(explicit = false): Promise<string | undefined> {
     if (!this.workspaceFolder) {
       if (explicit) vscode.window.showWarningMessage('noGIT: Open a folder to take snapshots.');
-      return;
+      return undefined;
     }
     const items = Array.from(this.modified);
 
@@ -225,7 +226,7 @@ export class SnapshotManager {
       if (explicit) {
         vscode.window.setStatusBarMessage('noGIT: no changes since the last snapshot', 3000);
       }
-      return;
+      return undefined;
     }
 
     // Clear only the files actually captured, not the whole set up front. If a
@@ -233,11 +234,12 @@ export class SnapshotManager {
     // stay marked and get another chance on the next snapshot rather than being
     // silently dropped from tracking. Edits arriving during the await are also
     // preserved this way.
-    const { files: copied } = await this.writeSnapshot(items);
+    const { ts, files: copied } = await this.writeSnapshot(items);
     for (const rel of copied) this.modified.delete(rel);
-    if (copied.length === 0) return; // nothing readable was captured
+    if (copied.length === 0) return undefined; // nothing readable was captured
     await this.pruneOldSnapshots();
     vscode.window.setStatusBarMessage(`noGIT: snapshot saved (${copied.length} files)`, 3000);
+    return ts;
   }
 
   // Capture a named checkpoint of the entire current workspace. Restoring it

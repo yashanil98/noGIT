@@ -64,15 +64,17 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
   );
 
   // Public API for other extensions and agents. These call the manager
-  // directly and never prompt, so they are safe to use headlessly.
+  // directly and never prompt, so the integrator owns any confirmation.
+  const mgr = snapshotMgr;
   const api: NoGitApi = {
     version: API_VERSION,
-    snapshotNow: () => snapshotMgr?.snapshotNow() ?? Promise.resolve(),
-    checkpoint: (label: string) => snapshotMgr?.checkpoint(label) ?? Promise.resolve(0),
-    listSnapshots: () => snapshotMgr?.listSnapshots() ?? Promise.resolve([]),
-    restoreFile: (ts: string, rel: string) => snapshotMgr?.restoreFile(ts, rel) ?? Promise.resolve(false),
-    restoreSnapshot: (ts: string) => snapshotMgr?.restoreSnapshot(ts) ?? Promise.resolve(0),
-    deleteSnapshot: (ts: string) => snapshotMgr?.deleteSnapshot(ts) ?? Promise.resolve(false),
+    snapshotNow: () => mgr.snapshotNow(),
+    checkpoint: (label: string) => mgr.checkpoint(label),
+    listSnapshots: () => mgr.listSnapshots(),
+    restoreFile: (ts: string, rel: string) => mgr.restoreFile(ts, rel),
+    restoreSnapshot: (ts: string) => mgr.restoreSnapshot(ts),
+    deleteSnapshot: (ts: string) => mgr.deleteSnapshot(ts),
+    onDidChangeSnapshots: mgr.onDidChangeSnapshots,
   };
   return api;
 }

@@ -2,6 +2,11 @@
 
 All notable changes to the noGIT extension are documented here.
 
+## [Unreleased]
+
+- Diff a file against the previous snapshot that captured it, not only against the current file.
+- Public API additions (API 1.2.0): `onDidChangeSnapshots` event, and `snapshotNow` now resolves to the new snapshot timestamp or undefined when nothing changed.
+
 ## [0.4.0]
 
 - Delete a snapshot from the timeline, with a confirmation prompt. Also available as the `noGIT: Delete Snapshot` command and through the public API (`deleteSnapshot`, API 1.1.0).

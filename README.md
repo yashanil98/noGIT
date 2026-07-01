@@ -89,11 +89,19 @@ const ext = vscode.extensions.getExtension('yashanil98.nogit');
 const api: NoGitApi | undefined = ext?.exports;
 
 await api?.checkpoint('before agent run');
-// ... let the agent work ...
+
+// React to snapshots taken in the background.
+api?.onDidChangeSnapshots(() => refreshMyView());
+
+// snapshotNow resolves to the new timestamp, or undefined if nothing changed.
+const ts = await api?.snapshotNow();
+
 const snapshots = await api?.listSnapshots();
 await api?.restoreSnapshot(snapshots[0].timestamp);
 await api?.deleteSnapshot(snapshots[0].timestamp); // permanent, not reversible
 ```
+
+The restore and delete methods run without a confirmation prompt, so an integrator that exposes them to an agent owns any confirmation.
 
 The API methods never prompt, so they are safe to call headlessly.
 
