@@ -86,6 +86,7 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
     snapshotNow: () => mgr.snapshotNow(),
     checkpoint: (label: string) => mgr.checkpoint(label),
     listSnapshots: () => mgr.listSnapshots(),
+    latestCheckpoint: () => mgr.latestCheckpoint(),
     restoreFile: (ts: string, rel: string) => mgr.restoreFile(ts, rel),
     restoreSnapshot: (ts: string) => mgr.restoreSnapshot(ts),
     deleteSnapshot: (ts: string) => mgr.deleteSnapshot(ts),

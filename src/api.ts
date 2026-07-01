@@ -31,6 +31,11 @@ export interface NoGitApi {
   // List snapshots and checkpoints, newest first.
   listSnapshots(): Promise<SnapshotInfo[]>;
 
+  // The most recent checkpoint (a labelled snapshot), or undefined when there
+  // is none. An agent can pair this with restoreSnapshot to roll back to the
+  // point before its run. Added in API 1.3.0.
+  latestCheckpoint(): Promise<SnapshotInfo | undefined>;
+
   // Restore a single file from a snapshot. The current contents are snapshotted
   // first so the restore is itself reversible. Returns true on success. Runs
   // without a prompt.
@@ -54,4 +59,4 @@ export interface NoGitApi {
   readonly onDidChangeSnapshots: vscode.Event<void>;
 }
 
-export const API_VERSION = '1.2.0';
+export const API_VERSION = '1.3.0';

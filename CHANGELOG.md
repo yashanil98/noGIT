@@ -5,7 +5,8 @@ All notable changes to the noGIT extension are documented here.
 ## [Unreleased]
 
 - Diff a file against the previous snapshot that captured it, not only against the current file.
-- Public API additions (API 1.2.0): `onDidChangeSnapshots` event, and `snapshotNow` now resolves to the new snapshot timestamp or undefined when nothing changed.
+- New `noGIT: Restore Latest Checkpoint` command to roll the whole workspace back to the most recent checkpoint in one step.
+- Public API additions: `onDidChangeSnapshots` event, `snapshotNow` now resolves to the new snapshot timestamp or undefined when nothing changed, and `latestCheckpoint()` (API 1.3.0).
 
 ## [0.4.0]
 

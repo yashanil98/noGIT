@@ -68,6 +68,7 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 | `noGIT: Snapshot Now` | Capture the files modified since the last snapshot |
 | `noGIT: Show Timeline` | Open the timeline panel |
 | `noGIT: Create Checkpoint` | Capture a named checkpoint of the entire workspace |
+| `noGIT: Restore Latest Checkpoint` | Roll the workspace back to the most recent checkpoint |
 | `noGIT: Delete Snapshot` | Delete a snapshot from the store |
 
 Restoring a file or snapshot first snapshots your current state, so any restore can itself be undone.
@@ -76,7 +77,7 @@ Restoring a file or snapshot first snapshots your current state, so any restore 
 
 AI coding agents often rewrite many files at once, sometimes writing directly to disk rather than through the editor. noGIT captures those changes and gives you a one-click way back.
 
-A good workflow is to create a checkpoint before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review or undo what the agent changed.
+A good workflow is to create a checkpoint before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review what the agent changed, or `noGIT: Restore Latest Checkpoint` to roll the whole run back in one step.
 
 Restoring a snapshot re-creates the files it captured with their saved contents. It is additive: it does not delete files the agent added after the snapshot was taken.
 
@@ -96,8 +97,11 @@ api?.onDidChangeSnapshots(() => refreshMyView());
 // snapshotNow resolves to the new timestamp, or undefined if nothing changed.
 const ts = await api?.snapshotNow();
 
+// Roll back to the checkpoint taken before the run.
+const cp = await api?.latestCheckpoint();
+if (cp) await api?.restoreSnapshot(cp.timestamp);
+
 const snapshots = await api?.listSnapshots();
-await api?.restoreSnapshot(snapshots[0].timestamp);
 await api?.deleteSnapshot(snapshots[0].timestamp); // permanent, not reversible
 ```
 
