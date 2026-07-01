@@ -59,6 +59,10 @@
         "title": "noGIT: Create Checkpoint"
       },
       {
+        "command": "nogit.restoreLatestCheckpoint",
+        "title": "noGIT: Restore Latest Checkpoint"
+      },
+      {
         "command": "nogit.restoreFile",
         "title": "noGIT: Restore File from Snapshot"
       },

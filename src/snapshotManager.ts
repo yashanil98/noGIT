@@ -13,6 +13,7 @@ import { SerialQueue } from './serialQueue';
 import { isRealPathInside } from './realpath';
 import { statusBarLabel } from './statusLabel';
 import { findPreviousSnapshotWithFile } from './previousSnapshot';
+import { findLatestCheckpoint } from './latestCheckpoint';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -467,6 +468,14 @@ export class SnapshotManager {
       vscode.window.showWarningMessage(summary.message);
     }
     return restored;
+  }
+
+  // The most recent checkpoint, or undefined when there is none. Lets a caller
+  // confirm with the user before restoring the common "roll back everything the
+  // agent just did" target.
+  public async latestCheckpoint(): Promise<SnapshotInfo | undefined> {
+    if (!this.workspaceFolder) return undefined;
+    return findLatestCheckpoint(await this.listSnapshots());
   }
 
   // Whether restoring `rel` is safe: either it does not currently exist (so

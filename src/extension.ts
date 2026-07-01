@@ -31,6 +31,21 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
       if (!name?.trim()) return;
       await snapshotMgr.checkpoint(name);
     }),
+    vscode.commands.registerCommand('nogit.restoreLatestCheckpoint', async () => {
+      if (!snapshotMgr) return;
+      const latest = await snapshotMgr.latestCheckpoint();
+      if (!latest) {
+        vscode.window.showInformationMessage('noGIT: no checkpoint to restore. Create one with noGIT: Create Checkpoint.');
+        return;
+      }
+      const choice = await vscode.window.showWarningMessage(
+        `Restore the latest checkpoint "${latest.label}" taken ${formatStamp(latest.timestamp)}? Your current versions are snapshotted first so this can be undone.`,
+        { modal: true },
+        'Restore checkpoint'
+      );
+      if (choice !== 'Restore checkpoint') return;
+      await snapshotMgr.restoreSnapshot(latest.timestamp);
+    }),
     vscode.commands.registerCommand('nogit.restoreFile', async (ts?: string, rel?: string) => {
       if (!snapshotMgr || !ts || !rel) return;
       const choice = await vscode.window.showWarningMessage(
