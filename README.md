@@ -59,7 +59,7 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 
    `Ctrl+Shift+P` then `noGIT: Show Timeline`
 
-5. For any file in the timeline, click `Open` to view that version, `Diff` to compare it against your current file, or `Restore` to bring it back. `Restore all` restores the whole snapshot, and `Delete` removes it.
+5. For any file in the timeline, click `Open` to view that version, `Diff` to compare it against your current file, `Diff prev` to compare it against the previous snapshot of that file, or `Restore` to bring it back. `Restore all files` restores the whole snapshot, and `Delete` removes it.
 
 ## Commands
 

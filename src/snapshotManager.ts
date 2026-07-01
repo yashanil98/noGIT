@@ -12,6 +12,7 @@ import { buildRestoreSummary } from './restoreSummary';
 import { SerialQueue } from './serialQueue';
 import { isRealPathInside } from './realpath';
 import { statusBarLabel } from './statusLabel';
+import { findPreviousSnapshotWithFile } from './previousSnapshot';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -382,6 +383,21 @@ export class SnapshotManager {
     if (!isInside(snapDir, full)) return undefined;
     if (!(await isRealPathInside(snapDir, full))) return undefined;
     return full;
+  }
+
+  // Resolve the stored path of `rel` in the most recent snapshot older than
+  // `ts` that also captured it, along with that snapshot's timestamp. Used to
+  // diff a version against the one before it. Returns undefined when there is
+  // no earlier version.
+  public async resolvePreviousSnapshotPath(
+    ts: string,
+    rel: string,
+  ): Promise<{ ts: string; path: string } | undefined> {
+    const prev = findPreviousSnapshotWithFile(await this.listSnapshots(), ts, rel);
+    if (!prev) return undefined;
+    const p = await this.resolveSnapshotPath(prev, rel);
+    if (!p) return undefined;
+    return { ts: prev, path: p };
   }
 
   // Absolute path to a file in the current workspace, or undefined when no

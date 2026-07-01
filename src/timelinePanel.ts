@@ -37,6 +37,9 @@ export class TimelinePanel {
       } else if (msg.type === 'diff') {
         if (!ts || !rel) return;
         await this.openDiff(ts, rel);
+      } else if (msg.type === 'diffPrevious') {
+        if (!ts || !rel) return;
+        await this.openDiffPrevious(ts, rel);
       } else if (msg.type === 'restoreFile') {
         if (!ts || !rel) return;
         await vscode.commands.executeCommand('nogit.restoreFile', ts, rel);
@@ -117,6 +120,23 @@ export class TimelinePanel {
     await vscode.commands.executeCommand('vscode.diff', left, right, title);
   }
 
+  // Diff this snapshot's version of a file against the version in the previous
+  // snapshot that captured it, so the user can see what changed between two
+  // points in time rather than only against the current file.
+  private async openDiffPrevious(ts: string, rel: string) {
+    const thisPath = await this.snapMgr.resolveSnapshotPath(ts, rel);
+    const prev = await this.snapMgr.resolvePreviousSnapshotPath(ts, rel);
+    if (!thisPath) return;
+    if (!prev) {
+      vscode.window.showInformationMessage(`${rel} has no earlier snapshot to compare against.`);
+      return;
+    }
+    const left = vscode.Uri.file(prev.path);
+    const right = vscode.Uri.file(thisPath);
+    const title = `${rel} (${formatStamp(prev.ts)} vs ${formatStamp(ts)})`;
+    await vscode.commands.executeCommand('vscode.diff', left, right, title);
+  }
+
   private render() {
     const webview = this.panel.webview;
     const snapshots = this.snapshots;
@@ -172,6 +192,7 @@ export class TimelinePanel {
                 <span>
                   <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="open">Open</button>
                   <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="diff">Diff</button>
+                  <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="diff-prev">Diff prev</button>
                   <button data-ts="${escapeHtml(s.timestamp)}" data-rel="${escapeHtml(rel)}" class="restore">Restore</button>
                 </span>
               </div>
@@ -189,6 +210,8 @@ export class TimelinePanel {
             btn.addEventListener('click', () => send('openPreview', btn)));
           document.querySelectorAll('.diff').forEach(btn =>
             btn.addEventListener('click', () => send('diff', btn)));
+          document.querySelectorAll('.diff-prev').forEach(btn =>
+            btn.addEventListener('click', () => send('diffPrevious', btn)));
           document.querySelectorAll('.restore').forEach(btn =>
             btn.addEventListener('click', () => send('restoreFile', btn)));
           document.querySelectorAll('.restore-snap').forEach(btn =>
