@@ -18,7 +18,8 @@ import { findLatestCheckpoint } from './latestCheckpoint';
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
   files: string[];              // relative paths
-  label?: string;               // set for named checkpoints
+  label?: string;               // set for named checkpoints and auto burst captures
+  auto?: boolean;               // true for an automatic burst checkpoint (labelled but still prunable)
 }
 
 const DEFAULT_EXCLUDES = [

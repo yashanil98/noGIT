@@ -39,3 +39,19 @@ test('an empty-string label parses but is not treated as a checkpoint label', ()
   // checking label.length will not treat it as a named checkpoint.
   assert.deepEqual(m, { timestamp: '20260615-120000', files: [], label: '' });
 });
+
+test('accepts an auto burst checkpoint manifest', () => {
+  const m = parseManifest('{"timestamp":"20260615-120000","files":["a.ts"],"label":"agent edit","auto":true}');
+  assert.deepEqual(m, { timestamp: '20260615-120000', files: ['a.ts'], label: 'agent edit', auto: true });
+});
+
+test('drops auto:false rather than carrying it', () => {
+  // Only auto:true is meaningful; a false or absent flag means an ordinary
+  // snapshot, so the parsed result omits it.
+  const m = parseManifest('{"timestamp":"20260615-120000","files":[],"auto":false}');
+  assert.deepEqual(m, { timestamp: '20260615-120000', files: [] });
+});
+
+test('rejects a non-boolean auto field', () => {
+  assert.equal(parseManifest('{"timestamp":"20260615-120000","files":[],"auto":"yes"}'), undefined);
+});
