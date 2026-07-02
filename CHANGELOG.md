@@ -6,6 +6,7 @@ All notable changes to the noGIT extension are documented here.
 
 - Diff a file against the previous snapshot that captured it, not only against the current file.
 - New `noGIT: Restore Latest Checkpoint` command to roll the whole workspace back to the most recent checkpoint in one step.
+- Automatic checkpoint when a burst of files changes together (for example during an AI agent run), labeled with the file count and still subject to pruning. Configurable via `nogit.autoCheckpointOnBurst` and `nogit.burstMinFiles`.
 - Public API additions: `onDidChangeSnapshots` event, `snapshotNow` now resolves to the new snapshot timestamp or undefined when nothing changed, and `latestCheckpoint()` (API 1.3.0).
 
 ## [0.4.0]

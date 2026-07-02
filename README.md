@@ -8,6 +8,7 @@ noGIT saves copies of the files you edit at a regular interval and lets you open
 
 - Automatic snapshots of modified files on a configurable interval (default: every 10 minutes)
 - Captures changes made outside the editor too, including files written by AI agents and other tools
+- Automatic checkpoint when many files change at once, so an AI agent run gets a single labeled restore point
 - All data stays in a local `.nogit/` folder inside your workspace
 - Timeline panel listing every snapshot and the files it captured
 - Status bar item showing when the last snapshot was taken, with one click to the timeline
@@ -77,7 +78,9 @@ Restoring a file or snapshot first snapshots your current state, so any restore 
 
 AI coding agents often rewrite many files at once, sometimes writing directly to disk rather than through the editor. noGIT captures those changes and gives you a one-click way back.
 
-A good workflow is to create a checkpoint before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review what the agent changed, or `noGIT: Restore Latest Checkpoint` to roll the whole run back in one step.
+When a burst of files changes together, noGIT records an automatic checkpoint labeled with the file count (for example "auto: 14 files changed"), so an agent run leaves a single clear restore point without you doing anything. These auto checkpoints are still pruned over time; a manual checkpoint is kept until you delete it. Tune the behavior with `nogit.autoCheckpointOnBurst` and `nogit.burstMinFiles`.
+
+You can also create a checkpoint yourself before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review what the agent changed, or `noGIT: Restore Latest Checkpoint` to roll the whole run back in one step.
 
 Restoring a snapshot re-creates the files it captured with their saved contents. It is additive: it does not delete files the agent added after the snapshot was taken.
 
@@ -107,8 +110,6 @@ await api?.deleteSnapshot(snapshots[0].timestamp); // permanent, not reversible
 
 The restore and delete methods run without a confirmation prompt, so an integrator that exposes them to an agent owns any confirmation.
 
-The API methods never prompt, so they are safe to call headlessly.
-
 ## Configuration
 
 Configure noGIT in your VS Code `settings.json`:
@@ -132,6 +133,12 @@ Configure noGIT in your VS Code `settings.json`:
 
   // Skip files larger than this many bytes. Set to 0 for no limit.
   "nogit.maxFileSizeBytes": 5000000,
+
+  // Capture an automatic checkpoint when many files change at once.
+  "nogit.autoCheckpointOnBurst": true,
+
+  // Files that must change together to trigger a burst checkpoint.
+  "nogit.burstMinFiles": 10,
 
   // Glob patterns to exclude from snapshots.
   "nogit.excludePatterns": [
