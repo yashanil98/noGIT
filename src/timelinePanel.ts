@@ -163,6 +163,7 @@ export class TimelinePanel {
           button { border: 1px solid var(--vscode-button-border, #888); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
           .empty { opacity: 0.7; font-style: italic; }
           .badge { font-weight: 400; font-size: 0.85em; padding: 1px 6px; margin-left: 6px; border-radius: 8px; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, #fff); }
+          .badge.auto { background: transparent; border: 1px solid var(--vscode-badge-background, #4d4d4d); color: var(--vscode-descriptionForeground, #999); }
           .rel { font-weight: 400; font-size: 0.85em; opacity: 0.7; margin-left: 8px; }
           .count { font-weight: 400; font-size: 0.85em; opacity: 0.7; margin-left: 8px; }
           .hdr { display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px; }
@@ -180,7 +181,7 @@ export class TimelinePanel {
         ${snapshots.map(s => `
           <div class="snap">
             <div class="ts">
-              <span>${escapeHtml(formatStamp(s.timestamp))}<span class="rel">${escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge">${escapeHtml(s.label)}</span>` : ''}</span>
+              <span>${escapeHtml(formatStamp(s.timestamp))}<span class="rel">${escapeHtml(relativeTime(s.timestamp, now))}</span><span class="count">${this.fileCountLabel(s.files.length)}</span>${s.label ? ` <span class="badge${s.auto ? ' auto' : ''}">${escapeHtml(s.label)}</span>` : ''}</span>
               <span>
                 <button data-ts="${escapeHtml(s.timestamp)}" class="restore-snap">Restore all files</button>
                 <button data-ts="${escapeHtml(s.timestamp)}" class="delete-snap">Delete</button>
