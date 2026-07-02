@@ -139,6 +139,17 @@
           "minimum": 0,
           "description": "Skip files larger than this many bytes when snapshotting. Set to 0 for no limit."
         },
+        "nogit.autoCheckpointOnBurst": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically capture a checkpoint when many files change at once, for example during an AI agent run."
+        },
+        "nogit.burstMinFiles": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "Number of files that must change together to trigger an automatic burst checkpoint."
+        },
         "nogit.excludePatterns": {
           "type": "array",
           "items": {

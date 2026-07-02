@@ -14,6 +14,7 @@ import { isRealPathInside } from './realpath';
 import { statusBarLabel } from './statusLabel';
 import { findPreviousSnapshotWithFile } from './previousSnapshot';
 import { findLatestCheckpoint } from './latestCheckpoint';
+import { isBurst, burstLabel } from './burst';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -48,6 +49,11 @@ export class SnapshotManager {
   // watcher). Held separately from context.subscriptions so they can be torn
   // down when the user disables automatic snapshots, then recreated on enable.
   private trackingDisposables: vscode.Disposable[] = [];
+  // Debounce timer for burst detection: rescheduled on every tracked change and
+  // fires once changes go quiet, so a run of many edits produces one auto
+  // checkpoint rather than one snapshot per file.
+  private burstTimer: NodeJS.Timeout | undefined;
+  private static readonly BURST_QUIET_MS = 2500;
 
   // Fires whenever the set of stored snapshots changes (a snapshot written or
   // deleted). The timeline panel listens so it refreshes without the user
@@ -140,6 +146,7 @@ export class SnapshotManager {
       if (!rel) return;
       if (this.shouldExclude(rel)) return;
       this.modified.add(rel);
+      this.scheduleBurstCheck();
     };
 
     this.trackingDisposables.push(
@@ -162,7 +169,41 @@ export class SnapshotManager {
     for (const d of this.trackingDisposables) d.dispose();
     this.trackingDisposables = [];
     this.watcher = undefined;
+    if (this.burstTimer) clearTimeout(this.burstTimer);
+    this.burstTimer = undefined;
     this.modified.clear();
+  }
+
+  // Restart the quiet-period timer after a tracked change. When changes stop
+  // for BURST_QUIET_MS, maybeAutoCheckpoint decides whether the run was large
+  // enough to capture. A no-op when burst checkpoints are turned off.
+  private scheduleBurstCheck() {
+    const cfg = vscode.workspace.getConfiguration('nogit');
+    if (!cfg.get<boolean>('autoCheckpointOnBurst', true)) return;
+    if (this.burstTimer) clearTimeout(this.burstTimer);
+    this.burstTimer = setTimeout(() => {
+      this.burstTimer = undefined;
+      void this.maybeAutoCheckpoint();
+    }, SnapshotManager.BURST_QUIET_MS);
+  }
+
+  // After a quiet period, capture an automatic checkpoint if enough distinct
+  // files changed to look like an agent or bulk edit. The snapshot is labelled
+  // for the timeline but marked auto so pruning can still reclaim it.
+  private async maybeAutoCheckpoint() {
+    if (!this.workspaceFolder) return;
+    const cfg = vscode.workspace.getConfiguration('nogit');
+    if (!cfg.get<boolean>('autoCheckpointOnBurst', true)) return;
+    const minFiles = cfg.get<number>('burstMinFiles', 10);
+    const count = this.modified.size;
+    if (!isBurst(count, { minFiles })) return;
+
+    const items = Array.from(this.modified);
+    const { files: copied } = await this.writeSnapshot(items, burstLabel(count), true);
+    for (const rel of copied) this.modified.delete(rel);
+    if (copied.length === 0) return;
+    await this.pruneOldSnapshots();
+    vscode.window.setStatusBarMessage(`noGIT: auto checkpoint (${copied.length} files)`, 3000);
   }
 
   public start() {
@@ -280,14 +321,14 @@ export class SnapshotManager {
   // listing, pick the same name, and have the second clobber the first's
   // manifest.
   private writeQueue = new SerialQueue();
-  private writeSnapshot(rels: string[], label?: string): Promise<{ ts: string | undefined; files: string[] }> {
-    return this.writeQueue.run(() => this.writeSnapshotImpl(rels, label));
+  private writeSnapshot(rels: string[], label?: string, auto = false): Promise<{ ts: string | undefined; files: string[] }> {
+    return this.writeQueue.run(() => this.writeSnapshotImpl(rels, label, auto));
   }
 
   // Write the given files into a new timestamped snapshot folder and record a
   // manifest. Returns the snapshot timestamp (undefined when nothing could be
   // captured and no folder was kept) and the relative paths actually copied.
-  private async writeSnapshotImpl(rels: string[], label?: string): Promise<{ ts: string | undefined; files: string[] }> {
+  private async writeSnapshotImpl(rels: string[], label?: string, auto = false): Promise<{ ts: string | undefined; files: string[] }> {
     if (!this.workspaceFolder) return { ts: undefined, files: [] };
     const snapRoot = await this.getSnapshotsRoot();
     // Pick a folder name that does not collide with an existing snapshot. Two
@@ -335,6 +376,7 @@ export class SnapshotManager {
 
     const manifest: SnapshotInfo = { timestamp: ts, files: copied };
     if (label) manifest.label = label;
+    if (auto) manifest.auto = true;
     // Write the manifest atomically: a partial meta.json (interrupted write)
     // would otherwise be read as a malformed snapshot and, for a checkpoint,
     // could be misclassified. Write to a temp file then rename into place.
