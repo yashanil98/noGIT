@@ -14,6 +14,15 @@ export interface SnapshotEntry {
   isCheckpoint: boolean;
 }
 
+// Whether a snapshot is a protected checkpoint that pruning must never delete.
+// A manual checkpoint has a non-empty label and is protected. An automatic
+// burst checkpoint also carries a label (so it reads clearly in the timeline)
+// but sets auto:true and stays prunable, or heavy agent use would fill the
+// store forever.
+export function isProtectedCheckpoint(meta: { label?: string; auto?: boolean }): boolean {
+  return typeof meta.label === 'string' && meta.label.length > 0 && meta.auto !== true;
+}
+
 export function selectSnapshotsToPrune(entries: SnapshotEntry[], max: number): string[] {
   const auto = entries
     .filter(e => !e.isCheckpoint)

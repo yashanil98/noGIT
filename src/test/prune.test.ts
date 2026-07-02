@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectSnapshotsToPrune, SnapshotEntry } from '../prune';
+import { selectSnapshotsToPrune, SnapshotEntry, isProtectedCheckpoint } from '../prune';
 
 const auto = (name: string): SnapshotEntry => ({ name, isCheckpoint: false });
 const cp = (name: string): SnapshotEntry => ({ name, isCheckpoint: true });
@@ -70,4 +70,13 @@ test('max of 1 with one checkpoint and several auto keeps one auto', () => {
     '20260615-120000',
     '20260615-120001',
   ]);
+});
+
+test('isProtectedCheckpoint protects a manual checkpoint but not an auto one', () => {
+  assert.equal(isProtectedCheckpoint({ label: 'before agent' }), true);
+  // Auto burst checkpoints are labelled but must stay prunable.
+  assert.equal(isProtectedCheckpoint({ label: 'agent edit', auto: true }), false);
+  // Ordinary and empty-label snapshots are not checkpoints.
+  assert.equal(isProtectedCheckpoint({}), false);
+  assert.equal(isProtectedCheckpoint({ label: '' }), false);
 });

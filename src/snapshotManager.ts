@@ -6,7 +6,7 @@ import { uniqueSnapshotName, isValidSnapshotName } from './snapshotName';
 import { relativeTime, formatStamp, formatTimestamp } from './relativeTime';
 import { toWorkspaceRel, isInside, isWithinSnapshotFolder } from './paths';
 import { parseManifest } from './manifest';
-import { selectSnapshotsToPrune, SnapshotEntry } from './prune';
+import { selectSnapshotsToPrune, SnapshotEntry, isProtectedCheckpoint } from './prune';
 import { canRestoreSafely } from './restoreGate';
 import { buildRestoreSummary } from './restoreSummary';
 import { SerialQueue } from './serialQueue';
@@ -607,7 +607,7 @@ export class SnapshotManager {
     try {
       const meta = parseManifest(await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8'));
       if (!meta) return true; // unparseable manifest: treat as protected, never auto-prune
-      return typeof meta.label === 'string' && meta.label.length > 0;
+      return isProtectedCheckpoint(meta);
     } catch {
       // A manifest we cannot read (missing, mid-write, permission error) is
       // treated as a protected checkpoint so pruning never deletes data it
