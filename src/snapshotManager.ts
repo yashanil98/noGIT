@@ -15,6 +15,7 @@ import { statusBarLabel } from './statusLabel';
 import { findPreviousSnapshotWithFile } from './previousSnapshot';
 import { findLatestCheckpoint } from './latestCheckpoint';
 import { isBurst, burstLabel } from './burst';
+import { mapWithConcurrency } from './concurrency';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -54,6 +55,9 @@ export class SnapshotManager {
   // checkpoint rather than one snapshot per file.
   private burstTimer: NodeJS.Timeout | undefined;
   private static readonly BURST_QUIET_MS = 2500;
+  // How many files to copy at once when writing a snapshot. Bounded so a large
+  // workspace does not open a file handle per file simultaneously.
+  private static readonly COPY_CONCURRENCY = 16;
 
   // Fires whenever the set of stored snapshots changes (a snapshot written or
   // deleted). The timeline panel listens so it refreshes without the user
@@ -346,25 +350,32 @@ export class SnapshotManager {
     await fs.mkdir(snapDir, { recursive: true });
 
     const maxBytes = vscode.workspace.getConfiguration('nogit').get<number>('maxFileSizeBytes', 5000000);
-    const copied: string[] = [];
-    for (const rel of rels) {
+    const root = this.workspaceFolder.uri.fsPath;
+    // Copy files with bounded concurrency rather than one at a time, so a large
+    // workspace snapshot is much faster without opening a file handle per file
+    // at once. Each worker returns the rel it copied or undefined when skipped
+    // or failed; results stay in input order so the manifest file list is
+    // deterministic.
+    const outcomes = await mapWithConcurrency(rels, SnapshotManager.COPY_CONCURRENCY, async rel => {
       try {
-        const abs = path.join(this.workspaceFolder.uri.fsPath, rel);
+        const abs = path.join(root, rel);
         // lstat does not follow symlinks, so a symlink is reported as a link
         // rather than its target. Skip anything that is not a regular file so
         // a symlink can never copy data from outside the workspace into the
         // store, and skip files over the configured size cap (0 = no limit).
         const st = await fs.lstat(abs);
-        if (!st.isFile()) continue;
-        if (maxBytes > 0 && st.size > maxBytes) continue;
+        if (!st.isFile()) return undefined;
+        if (maxBytes > 0 && st.size > maxBytes) return undefined;
         const dest = path.join(snapDir, rel);
         await fs.mkdir(path.dirname(dest), { recursive: true });
         await fs.copyFile(abs, dest);
-        copied.push(rel);
+        return rel;
       } catch (err) {
         console.error('noGIT copy failed for', rel, err);
+        return undefined;
       }
-    }
+    });
+    const copied = outcomes.filter((r): r is string => r !== undefined);
 
     // If nothing could be copied (for example every candidate file was deleted
     // between being marked and being read), do not leave an empty snapshot
