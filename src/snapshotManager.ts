@@ -17,6 +17,7 @@ import { findLatestCheckpoint } from './latestCheckpoint';
 import { isBurst, burstLabel } from './burst';
 import { mapWithConcurrency } from './concurrency';
 import { filesToDeleteForExactRestore } from './exactRestore';
+import { emptyDirCandidates } from './emptyDirs';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -561,6 +562,7 @@ export class SnapshotManager {
 
     let deleted = 0;
     const undeletable: string[] = [];
+    const deletedRels: string[] = [];
     for (const rel of toDelete) {
       // Only delete a file whose current contents we captured, so the deletion
       // can be undone. Anything the backup could not save is left in place.
@@ -568,7 +570,10 @@ export class SnapshotManager {
         undeletable.push(rel);
         continue;
       }
-      if (await this.deleteWorkspaceFile(rel)) deleted++;
+      if (await this.deleteWorkspaceFile(rel)) {
+        deleted++;
+        deletedRels.push(rel);
+      }
     }
 
     let restored = 0;
@@ -582,6 +587,12 @@ export class SnapshotManager {
       }
       if (await this.copyInto(src, rel)) restored++;
     }
+
+    // Remove directories left empty by the deletions, so the workspace truly
+    // matches the checkpoint. Done after the restore copies (which re-create
+    // any directories a checkpoint file needs) and deepest first, so a child is
+    // cleared before its parent is considered.
+    await this.removeEmptyDirs(deletedRels);
 
     const notes: string[] = [];
     if (deleted > 0) notes.push(`deleted ${deleted} added file(s)`);
@@ -626,6 +637,24 @@ export class SnapshotManager {
     } catch (err) {
       console.error('noGIT delete failed for', rel, err);
       return false;
+    }
+  }
+
+  // Remove directories left empty after exact-restore deletions. rmdir fails on
+  // a non-empty directory, so a directory that still holds kept files is left
+  // alone; the deepest-first order clears children before parents. Each path is
+  // confined to the workspace like a delete.
+  private async removeEmptyDirs(deletedRels: string[]) {
+    if (!this.workspaceFolder) return;
+    const root = this.workspaceFolder.uri.fsPath;
+    for (const dir of emptyDirCandidates(deletedRels)) {
+      const target = path.join(root, dir);
+      if (!isInside(root, target) || !(await isRealPathInside(root, target))) continue;
+      try {
+        await fs.rmdir(target); // throws if not empty; that is the intended guard
+      } catch {
+        // not empty, already gone, or unreadable: leave it in place
+      }
     }
   }
 
