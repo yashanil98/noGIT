@@ -16,6 +16,7 @@ import { findPreviousSnapshotWithFile } from './previousSnapshot';
 import { findLatestCheckpoint } from './latestCheckpoint';
 import { isBurst, burstLabel } from './burst';
 import { mapWithConcurrency } from './concurrency';
+import { filesToDeleteForExactRestore } from './exactRestore';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -497,17 +498,7 @@ export class SnapshotManager {
   // overwritten. Returns the number of files restored.
   public async restoreSnapshot(ts: string): Promise<number> {
     if (!this.workspaceFolder) return 0;
-    // Read just this snapshot's manifest rather than scanning every snapshot to
-    // find one known timestamp. resolveSnapshotPath validates ts, so a bad
-    // value yields no path and we bail.
-    const metaPath = await this.resolveSnapshotPath(ts, 'meta.json');
-    if (!metaPath) return 0;
-    let snap: SnapshotInfo | undefined;
-    try {
-      snap = parseManifest(await fs.readFile(metaPath, 'utf8'));
-    } catch {
-      snap = undefined;
-    }
+    const snap = await this.readManifest(ts);
     if (!snap) return 0;
     const backup = await this.backupBeforeRestore(snap.files);
     let restored = 0;
@@ -536,6 +527,106 @@ export class SnapshotManager {
   public async latestCheckpoint(): Promise<SnapshotInfo | undefined> {
     if (!this.workspaceFolder) return undefined;
     return findLatestCheckpoint(await this.listSnapshots());
+  }
+
+  // How many files an exact restore of a checkpoint would delete: files that
+  // exist now but were not part of the checkpoint. Only manual checkpoints
+  // capture the whole workspace, so this is meaningful only for them; returns
+  // undefined for anything that is not a manual checkpoint.
+  public async exactRestoreDeleteCount(ts: string): Promise<number | undefined> {
+    if (!this.workspaceFolder) return undefined;
+    const snap = await this.readManifest(ts);
+    if (!snap || !isProtectedCheckpoint(snap)) return undefined;
+    const current = await this.listWorkspaceFiles();
+    return filesToDeleteForExactRestore(current, snap.files).length;
+  }
+
+  // Exact (hard) restore: return the workspace to precisely this checkpoint by
+  // restoring its files AND deleting files created since. Guarded to manual
+  // checkpoints only, because an auto-snapshot captures just the changed files
+  // and deleting everything else would wipe the workspace. The deleted files
+  // are backed up first, so an exact restore is itself undoable. Returns the
+  // number of files restored, or undefined when ts is not a manual checkpoint.
+  public async restoreCheckpointExact(ts: string): Promise<number | undefined> {
+    if (!this.workspaceFolder) return undefined;
+    const snap = await this.readManifest(ts);
+    if (!snap || !isProtectedCheckpoint(snap)) return undefined;
+
+    const current = await this.listWorkspaceFiles();
+    const toDelete = filesToDeleteForExactRestore(current, snap.files);
+
+    // One backup covering both the files about to be overwritten and the files
+    // about to be deleted, so a single undo restores everything.
+    const backup = await this.backupBeforeRestore([...snap.files, ...toDelete]);
+
+    let deleted = 0;
+    const undeletable: string[] = [];
+    for (const rel of toDelete) {
+      // Only delete a file whose current contents we captured, so the deletion
+      // can be undone. Anything the backup could not save is left in place.
+      if (!backup.files.has(rel)) {
+        undeletable.push(rel);
+        continue;
+      }
+      if (await this.deleteWorkspaceFile(rel)) deleted++;
+    }
+
+    let restored = 0;
+    const skipped: string[] = [];
+    for (const rel of snap.files) {
+      const src = await this.resolveSnapshotPath(ts, rel);
+      if (!src) continue;
+      if (!(await this.canOverwrite(rel, backup.files))) {
+        skipped.push(rel);
+        continue;
+      }
+      if (await this.copyInto(src, rel)) restored++;
+    }
+
+    const notes: string[] = [];
+    if (deleted > 0) notes.push(`deleted ${deleted} added file(s)`);
+    if (undeletable.length > 0) notes.push(`kept ${undeletable.length} that could not be backed up`);
+    if (skipped.length > 0) notes.push(`skipped ${skipped.length} that could not be backed up`);
+    const detail = notes.length ? ` (${notes.join(', ')})` : '';
+    const message = `noGIT: exact restore of "${snap.label}" from ${formatStamp(ts)}${detail}.`;
+    if (skipped.length > 0 || undeletable.length > 0) {
+      vscode.window.showWarningMessage(message);
+    } else {
+      this.offerUndo(message, backup.ts);
+    }
+    return restored;
+  }
+
+  // Read and parse a single snapshot's manifest, or undefined when the
+  // timestamp is invalid or the manifest is missing or malformed.
+  private async readManifest(ts: string): Promise<SnapshotInfo | undefined> {
+    const metaPath = await this.resolveSnapshotPath(ts, 'meta.json');
+    if (!metaPath) return undefined;
+    try {
+      return parseManifest(await fs.readFile(metaPath, 'utf8'));
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Delete a workspace file for an exact restore. The path is confined to the
+  // workspace the same way a restore write is, so a crafted rel can never
+  // delete outside the root, and a symlink is not followed.
+  private async deleteWorkspaceFile(rel: string): Promise<boolean> {
+    if (!this.workspaceFolder) return false;
+    const root = this.workspaceFolder.uri.fsPath;
+    const target = path.join(root, rel);
+    if (!isInside(root, target) || !(await isRealPathInside(root, target))) {
+      console.error('noGIT refused out-of-workspace delete for', rel);
+      return false;
+    }
+    try {
+      await fs.rm(target, { force: true });
+      return true;
+    } catch (err) {
+      console.error('noGIT delete failed for', rel, err);
+      return false;
+    }
   }
 
   // Whether restoring `rel` is safe: either it does not currently exist (so
