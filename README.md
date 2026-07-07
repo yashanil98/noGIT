@@ -69,7 +69,8 @@ Open the folder in VS Code and press `F5` to launch an Extension Development Hos
 | `noGIT: Snapshot Now` | Capture the files modified since the last snapshot |
 | `noGIT: Show Timeline` | Open the timeline panel |
 | `noGIT: Create Checkpoint` | Capture a named checkpoint of the entire workspace |
-| `noGIT: Restore Latest Checkpoint` | Roll the workspace back to the most recent checkpoint |
+| `noGIT: Restore Latest Checkpoint` | Roll the workspace back to the most recent checkpoint (additive) |
+| `noGIT: Restore Latest Checkpoint (Exact, Deletes Added Files)` | Return the workspace to exactly the checkpoint, deleting files added since |
 | `noGIT: Delete Snapshot` | Delete a snapshot from the store |
 
 Restoring a file or snapshot first snapshots your current state, so any restore can itself be undone.
@@ -82,7 +83,7 @@ When a burst of files changes together, noGIT records an automatic checkpoint la
 
 You can also create a checkpoint yourself before handing the workspace to an agent (`noGIT: Create Checkpoint`, for example named "before agent run"), then use `Diff` and `Restore` in the timeline to review what the agent changed, or `noGIT: Restore Latest Checkpoint` to roll the whole run back in one step.
 
-Restoring a snapshot re-creates the files it captured with their saved contents. It is additive: it does not delete files the agent added after the snapshot was taken.
+Restoring a snapshot re-creates the files it captured with their saved contents. It is additive: it does not delete files the agent added after the snapshot was taken. To undo an agent run completely, including files it created, use `noGIT: Restore Latest Checkpoint (Exact, Deletes Added Files)`, which returns the workspace to exactly a manual checkpoint. It tells you how many files it will delete and snapshots your current files first, so it can be undone.
 
 Other extensions can drive noGIT through its public API:
 
