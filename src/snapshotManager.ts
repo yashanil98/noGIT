@@ -301,11 +301,19 @@ export class SnapshotManager {
     // that pruning would then treat as an ordinary auto-snapshot.
     const trimmed = label.trim();
     if (!trimmed) return 0;
-    // shouldExclude below is the single source of truth for exclusions, using
-    // the same matcher as auto-snapshots. Pass findFiles only a hint to skip
-    // our own snapshot store (which can be large) rather than a brace glob
-    // built from the user patterns, whose separate glob engine mishandles
-    // single-pattern, empty, and comma-containing cases.
+    const rels = await this.listWorkspaceFiles();
+    const copied = (await this.writeSnapshot(rels, trimmed)).files.length;
+    vscode.window.setStatusBarMessage(`noGIT: checkpoint "${trimmed}" saved (${copied} files)`, 4000);
+    return copied;
+  }
+
+  // Every workspace-relative file noGIT considers part of the workspace, using
+  // the same exclusion rules as snapshots. shouldExclude is the single source
+  // of truth for exclusions; findFiles is passed only a hint to skip our own
+  // snapshot store (which can be large) rather than a brace glob built from the
+  // user patterns, whose separate glob engine mishandles single-pattern, empty,
+  // and comma-containing cases.
+  private async listWorkspaceFiles(): Promise<string[]> {
     const exclude = `**/${this.snapshotFolderName()}/**`;
     const uris = await vscode.workspace.findFiles('**/*', exclude);
     const rels: string[] = [];
@@ -313,9 +321,7 @@ export class SnapshotManager {
       const rel = this.toRel(uri.fsPath);
       if (rel && !this.shouldExclude(rel)) rels.push(rel);
     }
-    const copied = (await this.writeSnapshot(rels, trimmed)).files.length;
-    vscode.window.setStatusBarMessage(`noGIT: checkpoint "${trimmed}" saved (${copied} files)`, 4000);
-    return copied;
+    return rels;
   }
 
   // Serialize snapshot writes. Each write reads the existing folder listing,
