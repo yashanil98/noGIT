@@ -46,6 +46,25 @@ export function activate(context: vscode.ExtensionContext): NoGitApi {
       if (choice !== 'Restore checkpoint') return;
       await snapshotMgr.restoreSnapshot(latest.timestamp);
     }),
+    vscode.commands.registerCommand('nogit.restoreLatestCheckpointExact', async () => {
+      if (!snapshotMgr) return;
+      const latest = await snapshotMgr.latestCheckpoint();
+      if (!latest) {
+        vscode.window.showInformationMessage('noGIT: no checkpoint to restore. Create one with noGIT: Create Checkpoint.');
+        return;
+      }
+      const deleteCount = await snapshotMgr.exactRestoreDeleteCount(latest.timestamp) ?? 0;
+      const deletePart = deleteCount > 0
+        ? `This will DELETE ${deleteCount} file(s) added since the checkpoint. `
+        : 'No files have been added since, so nothing will be deleted. ';
+      const choice = await vscode.window.showWarningMessage(
+        `Exactly restore the latest checkpoint "${latest.label}" taken ${formatStamp(latest.timestamp)}? ${deletePart}Your current files are snapshotted first so this can be undone.`,
+        { modal: true },
+        'Restore exactly'
+      );
+      if (choice !== 'Restore exactly') return;
+      await snapshotMgr.restoreCheckpointExact(latest.timestamp);
+    }),
     vscode.commands.registerCommand('nogit.restoreFile', async (ts?: string, rel?: string) => {
       if (!snapshotMgr || !ts || !rel) return;
       const choice = await vscode.window.showWarningMessage(

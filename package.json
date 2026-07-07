@@ -63,6 +63,10 @@
         "title": "noGIT: Restore Latest Checkpoint"
       },
       {
+        "command": "nogit.restoreLatestCheckpointExact",
+        "title": "noGIT: Restore Latest Checkpoint (Exact, Deletes Added Files)"
+      },
+      {
         "command": "nogit.restoreFile",
         "title": "noGIT: Restore File from Snapshot"
       },
