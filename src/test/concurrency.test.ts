@@ -50,6 +50,12 @@ test('a limit below one is clamped to one', async () => {
   assert.equal(peak, 1);
 });
 
+test('a non-finite limit is clamped to one and still processes every item', async () => {
+  // NaN once started zero runners and returned an array of holes.
+  const out = await mapWithConcurrency([1, 2, 3], NaN, async n => n * 2);
+  assert.deepEqual(out, [2, 4, 6]);
+});
+
 test('a throwing worker rejects the run', async () => {
   await assert.rejects(
     mapWithConcurrency([1, 2, 3], 2, async n => {

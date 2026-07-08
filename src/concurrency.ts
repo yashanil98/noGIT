@@ -11,7 +11,10 @@ export async function mapWithConcurrency<T, R>(
   worker: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
-  const effectiveLimit = Math.max(1, Math.floor(limit));
+  // Clamp to at least one runner. A non-finite limit (NaN) would otherwise
+  // start zero runners and return an array of holes, silently processing
+  // nothing, so treat it like any other out-of-range value.
+  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
   let next = 0;
 
   async function runner(): Promise<void> {
