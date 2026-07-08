@@ -31,3 +31,18 @@ test('handles unsorted input', () => {
   const shuffled = [SNAPS[2], SNAPS[0], SNAPS[1]];
   assert.equal(findPreviousSnapshotWithFile(shuffled, '20260101-120000', 'a.ts'), '20260101-110000');
 });
+
+test('orders collision suffixes numerically within a second', () => {
+  // -10 was created after -2 but sorts before it as text; the previous version
+  // of the -11 reference must be -10, not -2.
+  const burst = [
+    { timestamp: '20260101-120000', files: ['a.ts'] },
+    { timestamp: '20260101-120000-2', files: ['a.ts'] },
+    { timestamp: '20260101-120000-10', files: ['a.ts'] },
+    { timestamp: '20260101-120000-11', files: ['a.ts'] },
+  ];
+  assert.equal(
+    findPreviousSnapshotWithFile(burst, '20260101-120000-11', 'a.ts'),
+    '20260101-120000-10',
+  );
+});

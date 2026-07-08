@@ -18,6 +18,7 @@ import { isBurst, burstLabel } from './burst';
 import { mapWithConcurrency } from './concurrency';
 import { filesToDeleteForExactRestore } from './exactRestore';
 import { emptyDirCandidates } from './emptyDirs';
+import { compareSnapshotNames } from './snapshotOrder';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -415,7 +416,8 @@ export class SnapshotManager {
     let dirs: string[] = [];
     try {
       const entries = await fs.readdir(root, { withFileTypes: true });
-      dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort().reverse();
+      dirs = entries.filter(e => e.isDirectory()).map(e => e.name)
+        .sort(compareSnapshotNames).reverse();
     } catch {
       return [];
     }

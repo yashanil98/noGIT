@@ -6,9 +6,11 @@
 // Rules:
 //   - Named checkpoints are intentional restore points and are never pruned.
 //   - Only automatic snapshots count against `max`.
-//   - The oldest automatic snapshots are pruned first. Folder names sort
-//     chronologically (YYYYMMDD-HHmmss, with -N collision suffixes sorting
-//     just after their base), so a plain ascending sort is oldest-first.
+//   - The oldest automatic snapshots are pruned first. compareSnapshotNames
+//     orders names chronologically, treating the -N collision suffix as a
+//     number so -10 sorts after -2 rather than before it.
+import { compareSnapshotNames } from './snapshotOrder';
+
 export interface SnapshotEntry {
   name: string;
   isCheckpoint: boolean;
@@ -27,7 +29,7 @@ export function selectSnapshotsToPrune(entries: SnapshotEntry[], max: number): s
   const auto = entries
     .filter(e => !e.isCheckpoint)
     .map(e => e.name)
-    .sort();
+    .sort(compareSnapshotNames);
   const excess = Math.max(0, auto.length - Math.max(0, max));
   return auto.slice(0, excess);
 }

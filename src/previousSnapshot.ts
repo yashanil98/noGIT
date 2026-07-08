@@ -2,6 +2,8 @@
 // one before it. Only the timestamp and file list matter here, so this stays a
 // pure function over plain data and can be unit tested without vscode or the
 // filesystem.
+import { compareSnapshotNames } from './snapshotOrder';
+
 export interface SnapshotFiles {
   timestamp: string;
   files: string[];
@@ -9,9 +11,9 @@ export interface SnapshotFiles {
 
 // Given all snapshots (in any order) and a reference timestamp, return the
 // timestamp of the most recent snapshot OLDER than the reference that also
-// captured `rel`, or undefined when there is no earlier version. Timestamps
-// sort lexicographically in chronological order (YYYYMMDD-HHmmss with an
-// optional -N suffix), so "older" is a straight string comparison.
+// captured `rel`, or undefined when there is no earlier version.
+// compareSnapshotNames orders timestamps chronologically, treating the -N
+// collision suffix numerically so "older" stays correct within a single second.
 export function findPreviousSnapshotWithFile(
   snapshots: SnapshotFiles[],
   ts: string,
@@ -19,9 +21,9 @@ export function findPreviousSnapshotWithFile(
 ): string | undefined {
   let best: string | undefined;
   for (const s of snapshots) {
-    if (s.timestamp >= ts) continue;        // same snapshot or newer
+    if (compareSnapshotNames(s.timestamp, ts) >= 0) continue;  // same or newer
     if (!s.files.includes(rel)) continue;   // did not capture this file
-    if (best === undefined || s.timestamp > best) best = s.timestamp;
+    if (best === undefined || compareSnapshotNames(s.timestamp, best) > 0) best = s.timestamp;
   }
   return best;
 }

@@ -33,3 +33,12 @@ test('does not require sorted input', () => {
   ];
   assert.equal(findLatestCheckpoint(snaps)?.label, 'c');
 });
+
+test('orders collision suffixes numerically within a second', () => {
+  // -10 is newer than -2 but sorts before it as text.
+  const snaps = [
+    { timestamp: '20260101-120000-2', label: 'second' },
+    { timestamp: '20260101-120000-10', label: 'tenth' },
+  ];
+  assert.equal(findLatestCheckpoint(snaps)?.label, 'tenth');
+});

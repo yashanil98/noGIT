@@ -59,6 +59,23 @@ test('collision-suffixed names sort right after their base', () => {
   ]);
 });
 
+test('keeps the newest when a second holds ten or more collisions', () => {
+  // -10 and -11 are the two newest of this burst but sort before -2 as text,
+  // so a plain string sort would prune them and keep older snapshots.
+  const entries = [
+    auto('20260615-120000'),
+    auto('20260615-120000-2'),
+    auto('20260615-120000-3'),
+    auto('20260615-120000-10'),
+    auto('20260615-120000-11'),
+  ];
+  assert.deepEqual(selectSnapshotsToPrune(entries, 2), [
+    '20260615-120000',
+    '20260615-120000-2',
+    '20260615-120000-3',
+  ]);
+});
+
 test('max of 1 with one checkpoint and several auto keeps one auto', () => {
   const entries = [
     cp('20260615-100000'),
