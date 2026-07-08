@@ -19,6 +19,7 @@ import { mapWithConcurrency } from './concurrency';
 import { filesToDeleteForExactRestore } from './exactRestore';
 import { emptyDirCandidates } from './emptyDirs';
 import { compareSnapshotNames } from './snapshotOrder';
+import { normalizeLabel, isStringArg } from './apiArgs';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -301,8 +302,9 @@ export class SnapshotManager {
     // A checkpoint is identified by a non-empty label, and that label is what
     // protects it from pruning. Reject an empty or whitespace-only label so a
     // caller cannot create a snapshot they think is a permanent checkpoint
-    // that pruning would then treat as an ordinary auto-snapshot.
-    const trimmed = label.trim();
+    // that pruning would then treat as an ordinary auto-snapshot. normalizeLabel
+    // also tolerates a non-string from an untyped API caller rather than throwing.
+    const trimmed = normalizeLabel(label);
     if (!trimmed) return 0;
     const rels = await this.listWorkspaceFiles();
     const copied = (await this.writeSnapshot(rels, trimmed)).files.length;
@@ -445,6 +447,9 @@ export class SnapshotManager {
     // a symlink planted in the store plus a crafted manifest would turn Open,
     // Diff, and restore into an arbitrary-file read.
     if (!isValidSnapshotName(ts)) return undefined;
+    // relPath reaches path.join below, which throws on a non-string. An untyped
+    // API caller could pass anything, so reject a non-string as "no such path".
+    if (!isStringArg(relPath)) return undefined;
     const snapDir = path.join(this.workspaceFolder.uri.fsPath, this.snapshotFolderName(), 'snapshots', ts);
     const full = path.join(snapDir, relPath);
     if (!isInside(snapDir, full)) return undefined;
