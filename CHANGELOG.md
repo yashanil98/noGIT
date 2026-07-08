@@ -4,6 +4,8 @@ All notable changes to the noGIT extension are documented here.
 
 ## [Unreleased]
 
+- Fix snapshot ordering when ten or more snapshots are taken in the same second: the numeric collision suffix is now compared as a number, so pruning no longer deletes the newest snapshots of a burst and diff/restore pick the right version.
+- Treat `?` in an exclude pattern as a literal character instead of a wildcard.
 - Diff a file against the previous snapshot that captured it, not only against the current file.
 - New `noGIT: Restore Latest Checkpoint` command to roll the whole workspace back to the most recent checkpoint in one step.
 - New `noGIT: Restore Latest Checkpoint (Exact, Deletes Added Files)` command to return the workspace to exactly a manual checkpoint, deleting files added since. It previews the delete count, confirms, and snapshots the current state first so it can be undone.
