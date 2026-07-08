@@ -34,7 +34,10 @@ function compile(pattern: string): RegExp {
       regexBody += '[^/]*';
       i += 1;
     } else {
-      regexBody += pattern[i].replace(/[.+^${}()|[\]\\]/, '\\$&');
+      // Escape every regex metacharacter so any other character is a literal.
+      // ? in particular is not a glob wildcard here (only * and ** are), so it
+      // must not leak through as an "optional" quantifier.
+      regexBody += pattern[i].replace(/[.+^${}()|[\]\\?]/, '\\$&');
       i += 1;
     }
   }

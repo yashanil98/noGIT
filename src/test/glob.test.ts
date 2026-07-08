@@ -39,6 +39,14 @@ test('dots in the pattern are treated as literals', () => {
   assert.equal(globMatch('a.b', 'axb'), false);
 });
 
+test('a question mark is a literal, not a regex quantifier', () => {
+  // Only * and ** are wildcards, so ? must match a literal ? and nothing else.
+  assert.equal(globMatch('a?b', 'a?b'), true);
+  assert.equal(globMatch('a?b', 'ab'), false);
+  assert.equal(globMatch('**/temp?/**', 'temp?/notes.txt'), true);
+  assert.equal(globMatch('**/temp?/**', 'temp/notes.txt'), false);
+});
+
 test('repeated calls with the same pattern stay correct (cached regex is reused)', () => {
   // The compiled regex is cached by pattern text. A cached RegExp with a
   // global flag would carry lastIndex between calls; assert that does not
