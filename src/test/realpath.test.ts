@@ -39,3 +39,19 @@ test('refuses a symlinked leaf that points outside the root', async () => {
   await fs.symlink(targetFile, path.join(work, 'leaf'), 'file');
   assert.equal(await isRealPathInside(work, path.join(work, 'leaf')), false);
 });
+
+test('refuses when the root itself does not exist', async () => {
+  const root = await tmpRoot();
+  // realpath(root) throws, so the "refuse on error" branch must return false.
+  const missingRoot = path.join(root, 'never-created');
+  assert.equal(await isRealPathInside(missingRoot, path.join(missingRoot, 'x')), false);
+});
+
+test('refuses a not-yet-created target whose nearest existing ancestor is outside the root', async () => {
+  const root = await tmpRoot();
+  const work = path.join(root, 'work');
+  await fs.mkdir(work, { recursive: true });
+  // sibling/deep/x does not exist, so the walk climbs to the existing ancestor
+  // (root), then isInside(work, root/sibling/deep/x) is false.
+  assert.equal(await isRealPathInside(work, path.join(root, 'sibling', 'deep', 'x')), false);
+});

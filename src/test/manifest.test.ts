@@ -55,3 +55,22 @@ test('drops auto:false rather than carrying it', () => {
 test('rejects a non-boolean auto field', () => {
   assert.equal(parseManifest('{"timestamp":"20260615-120000","files":[],"auto":"yes"}'), undefined);
 });
+
+test('rejects valid JSON that is not an object', () => {
+  // An array passes typeof === 'object' but has no string timestamp; a number,
+  // string, boolean, or null all fail the object check outright.
+  assert.equal(parseManifest('[]'), undefined);
+  assert.equal(parseManifest('42'), undefined);
+  assert.equal(parseManifest('"a string"'), undefined);
+  assert.equal(parseManifest('true'), undefined);
+  assert.equal(parseManifest('null'), undefined);
+});
+
+test('passes file paths through verbatim; containment is enforced at restore time', () => {
+  // parseManifest validates shape only. A traversal string in files is not
+  // rejected here by design: the path-containment guards (paths.ts, realpath.ts)
+  // reject it when a restore actually tries to write. This test pins that
+  // contract so a future change cannot silently make this the only guard.
+  const m = parseManifest('{"timestamp":"20260615-120000","files":["../../etc/passwd"]}');
+  assert.deepEqual(m, { timestamp: '20260615-120000', files: ['../../etc/passwd'] });
+});
