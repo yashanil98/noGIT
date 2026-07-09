@@ -21,6 +21,7 @@ import { emptyDirCandidates } from './emptyDirs';
 import { compareSnapshotNames } from './snapshotOrder';
 import { normalizeLabel, isStringArg } from './apiArgs';
 import { decideFolderTransition } from './folderTransition';
+import { uncapturedFiles } from './uncaptured';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -247,8 +248,11 @@ export class SnapshotManager {
     if (!isBurst(count, { minFiles })) return;
 
     const items = Array.from(this.modified);
+    // Claim the files before the async write so an overlapping snapshotNow does
+    // not capture the same set again (see snapshotNow for the rationale).
+    for (const rel of items) this.modified.delete(rel);
     const { files: copied } = await this.writeSnapshot(items, burstLabel(count), true);
-    for (const rel of copied) this.modified.delete(rel);
+    this.remarkUncaptured(items, copied);
     if (copied.length === 0) return;
     await this.pruneOldSnapshots();
     vscode.window.setStatusBarMessage(`noGIT: auto checkpoint (${copied.length} files)`, 3000);
@@ -320,13 +324,15 @@ export class SnapshotManager {
       return undefined;
     }
 
-    // Clear only the files actually captured, not the whole set up front. If a
-    // write fails (or the manager is disposed mid-await), the uncaptured files
-    // stay marked and get another chance on the next snapshot rather than being
-    // silently dropped from tracking. Edits arriving during the await are also
-    // preserved this way.
+    // Claim these files up front by removing them from the pending set before
+    // the async write. Otherwise an overlapping run (a second timer tick, or
+    // maybeAutoCheckpoint) would read the same set and write a duplicate
+    // snapshot of the same files. Edits that arrive during the write re-add
+    // their file, so they are not lost. Files that fail to copy are re-marked
+    // below so they get another chance.
+    for (const rel of items) this.modified.delete(rel);
     const { ts, files: copied } = await this.writeSnapshot(items);
-    for (const rel of copied) this.modified.delete(rel);
+    this.remarkUncaptured(items, copied);
     if (copied.length === 0) return undefined; // nothing readable was captured
     await this.pruneOldSnapshots();
     vscode.window.setStatusBarMessage(`noGIT: snapshot saved (${copied.length} files)`, 3000);
@@ -796,6 +802,12 @@ export class SnapshotManager {
   // it, so it becomes prunable like any other auto snapshot.
   private releaseBackup(ts: string | undefined) {
     if (ts) this.protectedBackups.delete(ts);
+  }
+
+  // Put back any claimed file the write did not capture, so it is retried on the
+  // next snapshot instead of being dropped from tracking.
+  private remarkUncaptured(claimed: string[], captured: string[]) {
+    for (const rel of uncapturedFiles(claimed, captured)) this.modified.add(rel);
   }
 
   private async copyInto(src: string, rel: string): Promise<boolean> {
