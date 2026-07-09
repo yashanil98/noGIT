@@ -445,8 +445,13 @@ export class SnapshotManager {
     await fs.rename(tmpPath, metaPath);
 
     this.lastSnapshotTs = ts;
-    this.updateStatusItem();
-    this.changeEmitter.fire();
+    // A snapshot begun before dispose() can finish after it (the copy is async).
+    // Skip the UI notifications in that case: the status item is gone and the
+    // change emitter is disposed, so firing it is a use-after-dispose.
+    if (!this.disposed) {
+      this.updateStatusItem();
+      this.changeEmitter.fire();
+    }
     return { ts, files: copied };
   }
 
