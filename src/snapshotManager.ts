@@ -20,6 +20,7 @@ import { filesToDeleteForExactRestore } from './exactRestore';
 import { emptyDirCandidates } from './emptyDirs';
 import { compareSnapshotNames } from './snapshotOrder';
 import { normalizeLabel, isStringArg } from './apiArgs';
+import { decideFolderTransition } from './folderTransition';
 
 export interface SnapshotInfo {
   timestamp: string;            // YYYYMMDD-HHmmss
@@ -84,7 +85,7 @@ export class SnapshotManager {
       }
     }, null, this.context.subscriptions);
 
-    vscode.workspace.onDidChangeWorkspaceFolders(() => this.adoptFolderIfNeeded(),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => this.reconcileFolder(),
       null, this.context.subscriptions);
 
     this.workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -109,16 +110,52 @@ export class SnapshotManager {
     this.refreshTracking();
   }
 
-  // When a folder is opened into a window that started empty, begin operating
-  // on it. No-op once a folder has already been adopted.
-  private adoptFolderIfNeeded() {
-    if (this.workspaceFolder) return;
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) return;
-    this.workspaceFolder = folder;
-    this.notifyIfMultiRoot();
-    this.setupForFolder();
-    this.start();
+  // React to any change in the workspace folder set. noGIT operates on the
+  // first folder, so it must not only adopt a folder opened into an empty
+  // window but also switch when the bound folder is removed or reordered in a
+  // multi-root workspace, or stop when the last folder is closed. Without this
+  // it would keep snapshotting into a folder no longer in the workspace.
+  private reconcileFolder() {
+    const first = vscode.workspace.workspaceFolders?.[0];
+    const action = decideFolderTransition(this.workspaceFolder?.uri.fsPath, first?.uri.fsPath);
+    switch (action) {
+      case 'none':
+        return;
+      case 'bind':
+        this.workspaceFolder = first;
+        this.notifyIfMultiRoot();
+        this.setupForFolder();
+        this.start();
+        return;
+      case 'rebind':
+        this.teardownForFolder();
+        this.workspaceFolder = first;
+        this.lastSnapshotTs = undefined; // times belong to the previous folder
+        this.notifyIfMultiRoot();
+        this.setupForFolder();
+        this.start();
+        return;
+      case 'unbind':
+        this.teardownForFolder();
+        this.workspaceFolder = undefined;
+        this.lastSnapshotTs = undefined;
+        return;
+    }
+  }
+
+  // Undo setupForFolder/start for the current folder without disposing the
+  // manager itself, so a rebind can cleanly set up the next folder. The status
+  // item is created fresh per folder, so dispose the old one rather than leak it
+  // (it lives in context.subscriptions, which only clears at deactivation).
+  private teardownForFolder() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+    if (this.statusTimer) clearInterval(this.statusTimer);
+    this.statusTimer = undefined;
+    this.teardownTracking();
+    this.statusItem?.dispose();
+    this.statusItem = undefined;
+    this.modified.clear();
   }
 
   // noGIT snapshots only the first workspace folder. Tell multi-root users so
