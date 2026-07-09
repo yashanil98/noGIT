@@ -8,6 +8,8 @@ All notable changes to the noGIT extension are documented here.
 - Treat `?` in an exclude pattern as a literal character instead of a wildcard.
 - Public API calls (`checkpoint`, `restoreFile`) now return a clean no-op instead of throwing when a caller passes a non-string argument.
 - Follow the first workspace folder when the roots change: removing or reordering the first root in a multi-root workspace now switches snapshots to the new first folder instead of continuing to write to the old one.
+- Protect a restore's pre-restore backup from pruning for the entire restore and undo window, so a snapshot taken during a restore can no longer prune the backup and leave Undo with nothing to restore. Two overlapping restores no longer unprotect each other's backup.
+- Avoid duplicate snapshots when an automatic snapshot and a burst checkpoint run at nearly the same time, by claiming the pending files before the write instead of after.
 - Diff a file against the previous snapshot that captured it, not only against the current file.
 - New `noGIT: Restore Latest Checkpoint` command to roll the whole workspace back to the most recent checkpoint in one step.
 - New `noGIT: Restore Latest Checkpoint (Exact, Deletes Added Files)` command to return the workspace to exactly a manual checkpoint, deleting files added since. It previews the delete count, confirms, and snapshots the current state first so it can be undone.
