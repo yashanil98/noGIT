@@ -47,10 +47,13 @@ export class SnapshotManager {
   private statusTimer: NodeJS.Timeout | undefined;
   private lastSnapshotTs: string | undefined;
   private disposed = false;
-  // The backup snapshot a currently-shown "Undo" notification points at. It is
-  // an unlabelled snapshot, so without this it could be pruned by a later
-  // snapshot before the user clicks Undo, leaving Undo to restore nothing.
-  private pendingUndoTs: string | undefined;
+  // Backup snapshots that must not be pruned yet: each is an unlabelled
+  // pre-restore snapshot that is either still being restored from or is behind a
+  // visible "Undo" action. Without protecting these, a snapshot taken during the
+  // restore (or before the user clicks Undo) could prune the backup, leaving the
+  // restore/undo to find nothing. A set, not a single slot, so two overlapping
+  // restores do not unprotect each other's backup.
+  private protectedBackups: Set<string> = new Set();
   // Disposables for the change tracking (document listeners + filesystem
   // watcher). Held separately from context.subscriptions so they can be torn
   // down when the user disables automatic snapshots, then recreated on enable.
@@ -532,13 +535,17 @@ export class SnapshotManager {
     if (!src) return false;
     const backup = await this.backupBeforeRestore([rel]);
     if (!(await this.canOverwrite(rel, backup.files))) {
+      this.releaseBackup(backup.ts);
       vscode.window.showWarningMessage(
         `noGIT: could not back up ${rel} before restoring, so the restore was skipped to avoid losing your current version.`
       );
       return false;
     }
     const ok = await this.copyInto(src, rel);
-    if (!ok) return false;
+    if (!ok) {
+      this.releaseBackup(backup.ts);
+      return false;
+    }
     this.offerUndo(`noGIT: restored ${rel}.`, backup.ts);
     return true;
   }
@@ -566,6 +573,7 @@ export class SnapshotManager {
     if (summary.offerUndo) {
       this.offerUndo(summary.message, backup.ts);
     } else {
+      this.releaseBackup(backup.ts);
       vscode.window.showWarningMessage(summary.message);
     }
     return restored;
@@ -650,6 +658,7 @@ export class SnapshotManager {
     const detail = notes.length ? ` (${notes.join(', ')})` : '';
     const message = `noGIT: exact restore of "${snap.label}" from ${formatStamp(ts)}${detail}.`;
     if (skipped.length > 0 || undeletable.length > 0) {
+      this.releaseBackup(backup.ts);
       vscode.window.showWarningMessage(message);
     } else {
       this.offerUndo(message, backup.ts);
@@ -732,13 +741,16 @@ export class SnapshotManager {
       vscode.window.setStatusBarMessage(message, 3000);
       return;
     }
-    // Protect this backup from pruning while the notification is on screen.
-    this.pendingUndoTs = backupTs;
+    // The backup is already protected from pruning (backupBeforeRestore added
+    // it). Keep it protected while the notification is on screen, then release
+    // it once the user dismisses or acts, so it can be pruned normally again.
     void vscode.window
       .showInformationMessage(`${message} Your previous version was snapshotted.`, 'Undo')
-      .then(pick => {
-        if (this.pendingUndoTs === backupTs) this.pendingUndoTs = undefined;
-        if (pick === 'Undo') void this.restoreSnapshot(backupTs);
+      .then(async pick => {
+        // Keep the backup protected until the undo restore has finished reading
+        // from it, then release it so it can be pruned like any auto snapshot.
+        if (pick === 'Undo') await this.restoreSnapshot(backupTs);
+        this.releaseBackup(backupTs);
       });
   }
 
@@ -772,7 +784,18 @@ export class SnapshotManager {
   // to overwrite anything the backup could not save and can offer an undo.
   private async backupBeforeRestore(rels: string[]): Promise<{ ts: string | undefined; files: Set<string> }> {
     const { ts, files } = await this.writeSnapshot(rels);
+    // Protect the backup from pruning immediately, before the (async) restore
+    // loop runs. A snapshot taken mid-restore would otherwise prune this
+    // still-unlabelled backup and the restore/undo would find nothing. The
+    // caller releases it when the restore is done and no undo is pending.
+    if (ts) this.protectedBackups.add(ts);
     return { ts, files: new Set(files) };
+  }
+
+  // Stop protecting a backup once no restore is reading it and no Undo points at
+  // it, so it becomes prunable like any other auto snapshot.
+  private releaseBackup(ts: string | undefined) {
+    if (ts) this.protectedBackups.delete(ts);
   }
 
   private async copyInto(src: string, rel: string): Promise<boolean> {
@@ -818,9 +841,10 @@ export class SnapshotManager {
       const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
       const entries: SnapshotEntry[] = [];
       for (const d of dirs) {
-        // Treat the pending-undo backup as protected so a click on Undo still
-        // finds it. isCheckpoint already protects labelled checkpoints.
-        const protectedEntry = d === this.pendingUndoTs || await this.isCheckpoint(root, d);
+        // Treat an in-flight or undoable restore backup as protected so the
+        // restore/undo still finds it. isCheckpoint already protects labelled
+        // checkpoints.
+        const protectedEntry = this.protectedBackups.has(d) || await this.isCheckpoint(root, d);
         entries.push({ name: d, isCheckpoint: protectedEntry });
       }
       for (const name of selectSnapshotsToPrune(entries, max)) {
