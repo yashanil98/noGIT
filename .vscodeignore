@@ -1,6 +1,7 @@
 src/**
 out/**
 node_modules/**
+mcp/**
 .vscode/**
 .vscode-test/**
 .github/**

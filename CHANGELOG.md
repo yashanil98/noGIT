@@ -4,6 +4,7 @@ All notable changes to the noGIT extension are documented here.
 
 ## [Unreleased]
 
+- MCP server mode (`mcp/`): terminal AI agents like Claude Code can now checkpoint and roll back a workspace over the Model Context Protocol without VS Code running. The server reads and writes the same `.nogit/` store format, so snapshots are fully interchangeable between the extension and the MCP server. Tools: `nogit_checkpoint`, `nogit_snapshot_now`, `nogit_list_snapshots`, `nogit_restore_file`, `nogit_restore_snapshot`, `nogit_restore_checkpoint_exact`, `nogit_latest_checkpoint`, `nogit_diff`.
 - Fix snapshot ordering when ten or more snapshots are taken in the same second: the numeric collision suffix is now compared as a number, so pruning no longer deletes the newest snapshots of a burst and diff/restore pick the right version.
 - Treat `?` in an exclude pattern as a literal character instead of a wildcard.
 - Public API calls (`checkpoint`, `restoreFile`) now return a clean no-op instead of throwing when a caller passes a non-string argument.

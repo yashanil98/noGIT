@@ -1,0 +1,634 @@
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+
+// Pure modules reused from the extension, inlined here to avoid cross-package
+// imports that would complicate the build. Each function is small and
+// well-specified; keeping a local copy means the mcp package has zero coupling
+// to the extension's build output while staying format-compatible.
+
+// --- glob.ts (verbatim logic) ---
+const regexCache = new Map<string, RegExp>();
+
+function compile(pattern: string): RegExp {
+  const cached = regexCache.get(pattern);
+  if (cached) return cached;
+  let regexBody = '';
+  for (let i = 0; i < pattern.length; ) {
+    if (pattern.startsWith('**/', i)) {
+      regexBody += '(?:.*/)?';
+      i += 3;
+    } else if (pattern.startsWith('**', i)) {
+      regexBody += '.*';
+      i += 2;
+    } else if (pattern[i] === '*') {
+      regexBody += '[^/]*';
+      i += 1;
+    } else {
+      regexBody += pattern[i].replace(/[.+^${}()|[\]\\?]/, '\\$&');
+      i += 1;
+    }
+  }
+  const regex = new RegExp(`^${regexBody}$`);
+  regexCache.set(pattern, regex);
+  return regex;
+}
+
+function matchesAny(patterns: string[], relPath: string): boolean {
+  return patterns.some(p => compile(p).test(relPath));
+}
+
+// --- paths.ts (verbatim logic) ---
+function toWorkspaceRel(root: string, absPath: string): string | undefined {
+  const rel = path.relative(root, absPath);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
+  return rel.split(path.sep).join(path.posix.sep);
+}
+
+function isInside(root: string, child: string): boolean {
+  const rel = path.relative(root, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function isWithinSnapshotFolder(rel: string, folderName: string): boolean {
+  return rel === folderName || rel.startsWith(`${folderName}/`);
+}
+
+// --- realpath.ts (verbatim logic) ---
+async function isRealPathInside(root: string, target: string): Promise<boolean> {
+  let realRoot: string;
+  try {
+    realRoot = await fs.realpath(root);
+  } catch {
+    return false;
+  }
+  let current = path.resolve(target);
+  const tail: string[] = [];
+  for (let guard = 0; guard < 4096; guard++) {
+    try {
+      const real = await fs.realpath(current);
+      const full = tail.length ? path.join(real, ...tail) : real;
+      return isInside(realRoot, full);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return false;
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+  return false;
+}
+
+// --- snapshotName.ts (verbatim logic) ---
+function uniqueSnapshotName(base: string, taken: Iterable<string>): string {
+  const set = taken instanceof Set ? taken : new Set(taken);
+  if (!set.has(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`;
+    if (!set.has(candidate)) return candidate;
+  }
+}
+
+function isValidSnapshotName(name: string): boolean {
+  return /^\d{8}-\d{6}(?:-\d+)?$/.test(name);
+}
+
+// --- snapshotOrder.ts (verbatim logic) ---
+function compareSnapshotNames(a: string, b: string): number {
+  const [baseA, suffixA] = splitSnapshotName(a);
+  const [baseB, suffixB] = splitSnapshotName(b);
+  if (baseA < baseB) return -1;
+  if (baseA > baseB) return 1;
+  return suffixA - suffixB;
+}
+
+function splitSnapshotName(name: string): [string, number] {
+  const m = /^(\d{8}-\d{6})-(\d+)$/.exec(name);
+  if (m) return [m[1], Number(m[2])];
+  return [name, 0];
+}
+
+// --- relativeTime.ts (formatTimestamp only) ---
+function formatTimestamp(d: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+// --- manifest.ts (verbatim logic) ---
+export interface SnapshotInfo {
+  timestamp: string;
+  files: string[];
+  label?: string;
+  auto?: boolean;
+}
+
+function parseManifest(raw: string): SnapshotInfo | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null) return undefined;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.timestamp !== 'string') return undefined;
+  if (!/^\d{8}-\d{6}(?:-\d+)?$/.test(obj.timestamp)) return undefined;
+  if (!Array.isArray(obj.files) || !obj.files.every(f => typeof f === 'string')) return undefined;
+  if (obj.label !== undefined && typeof obj.label !== 'string') return undefined;
+  if (obj.auto !== undefined && typeof obj.auto !== 'boolean') return undefined;
+  const result: SnapshotInfo = { timestamp: obj.timestamp, files: obj.files as string[] };
+  if (typeof obj.label === 'string') result.label = obj.label;
+  if (obj.auto === true) result.auto = true;
+  return result;
+}
+
+// --- prune.ts (verbatim logic) ---
+interface SnapshotEntry {
+  name: string;
+  isCheckpoint: boolean;
+}
+
+function isProtectedCheckpoint(meta: { label?: string; auto?: boolean }): boolean {
+  return typeof meta.label === 'string' && meta.label.length > 0 && meta.auto !== true;
+}
+
+function selectSnapshotsToPrune(entries: SnapshotEntry[], max: number): string[] {
+  const auto = entries
+    .filter(e => !e.isCheckpoint)
+    .map(e => e.name)
+    .sort(compareSnapshotNames);
+  const excess = Math.max(0, auto.length - Math.max(0, max));
+  return auto.slice(0, excess);
+}
+
+// --- concurrency.ts (verbatim logic) ---
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
+  let next = 0;
+  async function runner(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i], i);
+    }
+  }
+  const runners = Array.from(
+    { length: Math.min(effectiveLimit, items.length) },
+    () => runner(),
+  );
+  await Promise.all(runners);
+  return results;
+}
+
+// --- latestCheckpoint.ts (verbatim logic) ---
+function findLatestCheckpoint(snapshots: SnapshotInfo[]): SnapshotInfo | undefined {
+  let best: SnapshotInfo | undefined;
+  for (const s of snapshots) {
+    if (!s.label || s.label.length === 0) continue;
+    if (best === undefined || compareSnapshotNames(s.timestamp, best.timestamp) > 0) best = s;
+  }
+  return best;
+}
+
+// --- emptyDirs.ts (verbatim logic) ---
+function emptyDirCandidates(deletedRels: readonly string[]): string[] {
+  const dirs = new Set<string>();
+  for (const rel of deletedRels) {
+    let dir = parentPosix(rel);
+    while (dir !== '') {
+      dirs.add(dir);
+      dir = parentPosix(dir);
+    }
+  }
+  return [...dirs].sort((a, b) => {
+    const depth = segmentCount(b) - segmentCount(a);
+    return depth !== 0 ? depth : (a < b ? -1 : a > b ? 1 : 0);
+  });
+}
+
+function parentPosix(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i === -1 ? '' : p.slice(0, i);
+}
+
+function segmentCount(p: string): number {
+  return p.length === 0 ? 0 : p.split('/').length;
+}
+
+// --- exactRestore.ts (verbatim logic) ---
+function filesToDeleteForExactRestore(
+  currentFiles: readonly string[],
+  checkpointFiles: readonly string[],
+): string[] {
+  const kept = new Set(checkpointFiles);
+  return currentFiles.filter(rel => !kept.has(rel));
+}
+
+// --- restoreGate.ts (verbatim logic) ---
+function canRestoreSafely(fileExists: boolean, wasBackedUp: boolean): boolean {
+  return !fileExists || wasBackedUp;
+}
+
+// --- serialQueue.ts (verbatim logic) ---
+class SerialQueue {
+  private tail: Promise<unknown> = Promise.resolve();
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task);
+    this.tail = result.catch(() => undefined);
+    return result;
+  }
+}
+
+// ============================================================================
+// SnapshotEngine: the vscode-free implementation of snapshot/list/restore
+// ============================================================================
+
+const DEFAULT_EXCLUDES = [
+  '**/.git/**',
+  '**/.nogit/**',
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/out/**',
+];
+
+const COPY_CONCURRENCY = 16;
+
+export interface EngineOptions {
+  root: string;
+  snapshotFolderName?: string;
+  excludePatterns?: string[];
+  maxFileSizeBytes?: number;
+  maxSnapshots?: number;
+}
+
+export class SnapshotEngine {
+  private readonly root: string;
+  private readonly folderName: string;
+  private readonly excludes: string[];
+  private readonly maxBytes: number;
+  private readonly maxSnapshots: number;
+  private readonly writeQueue = new SerialQueue();
+
+  constructor(opts: EngineOptions) {
+    this.root = path.resolve(opts.root);
+    this.folderName = opts.snapshotFolderName ?? '.nogit';
+    this.excludes = opts.excludePatterns ?? DEFAULT_EXCLUDES;
+    this.maxBytes = opts.maxFileSizeBytes ?? 5_000_000;
+    this.maxSnapshots = opts.maxSnapshots ?? 48;
+  }
+
+  // Recursive directory walk respecting excludes. Returns workspace-relative
+  // posix paths for all regular files (no symlinks, no directories).
+  private async listWorkspaceFiles(): Promise<string[]> {
+    const results: string[] = [];
+    const walk = async (dir: string) => {
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const abs = path.join(dir, entry.name);
+        const rel = toWorkspaceRel(this.root, abs);
+        if (!rel) continue;
+        if (this.shouldExclude(rel)) continue;
+        if (entry.isDirectory()) {
+          await walk(abs);
+        } else if (entry.isFile()) {
+          results.push(rel);
+        }
+      }
+    };
+    await walk(this.root);
+    return results;
+  }
+
+  private shouldExclude(rel: string): boolean {
+    if (isWithinSnapshotFolder(rel, this.folderName)) return true;
+    return matchesAny(this.excludes, rel);
+  }
+
+  private async getSnapshotsRoot(): Promise<string> {
+    const base = path.join(this.root, this.folderName);
+    const root = path.join(base, 'snapshots');
+    await fs.mkdir(root, { recursive: true });
+    await this.ensureStoreGitignored(base);
+    return root;
+  }
+
+  private async ensureStoreGitignored(base: string) {
+    const gitignore = path.join(base, '.gitignore');
+    try {
+      await fs.access(gitignore);
+    } catch {
+      try {
+        await fs.writeFile(gitignore, '*\n', 'utf8');
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  private writeSnapshot(rels: string[], label?: string, auto = false): Promise<{ ts: string | undefined; files: string[] }> {
+    return this.writeQueue.run(() => this.writeSnapshotImpl(rels, label, auto));
+  }
+
+  private async writeSnapshotImpl(rels: string[], label?: string, auto = false): Promise<{ ts: string | undefined; files: string[] }> {
+    const snapRoot = await this.getSnapshotsRoot();
+    let existing: string[] = [];
+    try {
+      const entries = await fs.readdir(snapRoot, { withFileTypes: true });
+      existing = entries.filter(e => e.isDirectory()).map(e => e.name);
+    } catch {
+      // treat as empty
+    }
+    const ts = uniqueSnapshotName(formatTimestamp(new Date()), existing);
+    const snapDir = path.join(snapRoot, ts);
+    await fs.mkdir(snapDir, { recursive: true });
+
+    const outcomes = await mapWithConcurrency(rels, COPY_CONCURRENCY, async rel => {
+      try {
+        const abs = path.join(this.root, rel);
+        const st = await fs.lstat(abs);
+        if (!st.isFile()) return undefined;
+        if (this.maxBytes > 0 && st.size > this.maxBytes) return undefined;
+        const dest = path.join(snapDir, rel);
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.copyFile(abs, dest);
+        return rel;
+      } catch {
+        return undefined;
+      }
+    });
+    const copied = outcomes.filter((r): r is string => r !== undefined);
+
+    if (copied.length === 0) {
+      await fs.rm(snapDir, { recursive: true, force: true });
+      return { ts: undefined, files: [] };
+    }
+
+    const manifest: SnapshotInfo = { timestamp: ts, files: copied };
+    if (label) manifest.label = label;
+    if (auto) manifest.auto = true;
+    const metaPath = path.join(snapDir, 'meta.json');
+    const tmpPath = path.join(snapDir, 'meta.json.tmp');
+    await fs.writeFile(tmpPath, JSON.stringify(manifest, null, 2), 'utf8');
+    await fs.rename(tmpPath, metaPath);
+
+    return { ts, files: copied };
+  }
+
+  async checkpoint(label: string): Promise<{ ts: string | undefined; fileCount: number }> {
+    const trimmed = typeof label === 'string' ? label.trim() : '';
+    if (!trimmed) return { ts: undefined, fileCount: 0 };
+    const rels = await this.listWorkspaceFiles();
+    const { ts, files } = await this.writeSnapshot(rels, trimmed);
+    await this.pruneOldSnapshots();
+    return { ts, fileCount: files.length };
+  }
+
+  async snapshotNow(): Promise<{ ts: string | undefined; fileCount: number }> {
+    const rels = await this.listWorkspaceFiles();
+    const { ts, files } = await this.writeSnapshot(rels);
+    await this.pruneOldSnapshots();
+    return { ts, fileCount: files.length };
+  }
+
+  async listSnapshots(): Promise<SnapshotInfo[]> {
+    const root = await this.getSnapshotsRoot();
+    let dirs: string[] = [];
+    try {
+      const entries = await fs.readdir(root, { withFileTypes: true });
+      dirs = entries.filter(e => e.isDirectory()).map(e => e.name)
+        .sort(compareSnapshotNames).reverse();
+    } catch {
+      return [];
+    }
+    const metas = await Promise.all(dirs.map(async d => {
+      try {
+        return parseManifest(await fs.readFile(path.join(root, d, 'meta.json'), 'utf8'));
+      } catch {
+        return undefined;
+      }
+    }));
+    return metas.filter((m): m is SnapshotInfo => m !== undefined);
+  }
+
+  async latestCheckpoint(): Promise<SnapshotInfo | undefined> {
+    return findLatestCheckpoint(await this.listSnapshots());
+  }
+
+  async restoreFile(ts: string, rel: string): Promise<boolean> {
+    if (!isValidSnapshotName(ts)) return false;
+    if (typeof rel !== 'string') return false;
+    const src = await this.resolveSnapshotPath(ts, rel);
+    if (!src) return false;
+    const backup = await this.backupBeforeRestore([rel]);
+    if (!(await this.canOverwrite(rel, backup.files))) return false;
+    return this.copyInto(src, rel);
+  }
+
+  async restoreSnapshot(ts: string): Promise<number> {
+    if (!isValidSnapshotName(ts)) return 0;
+    const snap = await this.readManifest(ts);
+    if (!snap) return 0;
+    const backup = await this.backupBeforeRestore(snap.files);
+    let restored = 0;
+    for (const rel of snap.files) {
+      const src = await this.resolveSnapshotPath(ts, rel);
+      if (!src) continue;
+      if (!(await this.canOverwrite(rel, backup.files))) continue;
+      if (await this.copyInto(src, rel)) restored++;
+    }
+    return restored;
+  }
+
+  async restoreCheckpointExact(ts: string): Promise<number | undefined> {
+    if (!isValidSnapshotName(ts)) return undefined;
+    const snap = await this.readManifest(ts);
+    if (!snap || !isProtectedCheckpoint(snap)) return undefined;
+    const current = await this.listWorkspaceFiles();
+    const toDelete = filesToDeleteForExactRestore(current, snap.files);
+    const backup = await this.backupBeforeRestore([...snap.files, ...toDelete]);
+
+    for (const rel of toDelete) {
+      if (!backup.files.has(rel)) continue;
+      await this.deleteWorkspaceFile(rel);
+    }
+
+    let restored = 0;
+    for (const rel of snap.files) {
+      const src = await this.resolveSnapshotPath(ts, rel);
+      if (!src) continue;
+      if (!(await this.canOverwrite(rel, backup.files))) continue;
+      if (await this.copyInto(src, rel)) restored++;
+    }
+
+    const deletedRels = toDelete.filter(r => backup.files.has(r));
+    await this.removeEmptyDirs(deletedRels);
+    return restored;
+  }
+
+  async diff(ts: string, rel: string): Promise<string | undefined> {
+    if (!isValidSnapshotName(ts)) return undefined;
+    if (typeof rel !== 'string') return undefined;
+    const snapPath = await this.resolveSnapshotPath(ts, rel);
+    if (!snapPath) return undefined;
+    const workspacePath = path.join(this.root, rel);
+    if (!isInside(this.root, workspacePath)) return undefined;
+
+    let snapContent: string;
+    try {
+      snapContent = await fs.readFile(snapPath, 'utf8');
+    } catch {
+      return undefined;
+    }
+
+    let currentContent: string;
+    try {
+      currentContent = await fs.readFile(workspacePath, 'utf8');
+    } catch {
+      currentContent = '';
+    }
+
+    return unifiedDiff(rel, snapContent, currentContent, ts);
+  }
+
+  private async resolveSnapshotPath(ts: string, relPath: string): Promise<string | undefined> {
+    if (!isValidSnapshotName(ts)) return undefined;
+    if (typeof relPath !== 'string') return undefined;
+    const snapDir = path.join(this.root, this.folderName, 'snapshots', ts);
+    const full = path.join(snapDir, relPath);
+    if (!isInside(snapDir, full)) return undefined;
+    if (!(await isRealPathInside(snapDir, full))) return undefined;
+    return full;
+  }
+
+  private async readManifest(ts: string): Promise<SnapshotInfo | undefined> {
+    const snapRoot = await this.getSnapshotsRoot();
+    const metaPath = path.join(snapRoot, ts, 'meta.json');
+    try {
+      return parseManifest(await fs.readFile(metaPath, 'utf8'));
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async backupBeforeRestore(rels: string[]): Promise<{ ts: string | undefined; files: Set<string> }> {
+    const { ts, files } = await this.writeSnapshot(rels);
+    return { ts, files: new Set(files) };
+  }
+
+  private async canOverwrite(rel: string, backedUp: Set<string>): Promise<boolean> {
+    const abs = path.join(this.root, rel);
+    let exists = false;
+    try {
+      await fs.access(abs);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    return canRestoreSafely(exists, backedUp.has(rel));
+  }
+
+  private async copyInto(src: string, rel: string): Promise<boolean> {
+    const dest = path.join(this.root, rel);
+    if (!isInside(this.root, dest) || !(await isRealPathInside(this.root, dest))) return false;
+    try {
+      const st = await fs.lstat(dest);
+      if (st.isSymbolicLink()) return false;
+    } catch {
+      // dest does not exist yet
+    }
+    try {
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.copyFile(src, dest);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async deleteWorkspaceFile(rel: string): Promise<boolean> {
+    const target = path.join(this.root, rel);
+    if (!isInside(this.root, target) || !(await isRealPathInside(this.root, target))) return false;
+    try {
+      await fs.rm(target, { force: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async removeEmptyDirs(deletedRels: string[]) {
+    for (const dir of emptyDirCandidates(deletedRels)) {
+      const target = path.join(this.root, dir);
+      if (!isInside(this.root, target) || !(await isRealPathInside(this.root, target))) continue;
+      try {
+        await fs.rmdir(target);
+      } catch {
+        // not empty or already gone
+      }
+    }
+  }
+
+  private async pruneOldSnapshots() {
+    const root = await this.getSnapshotsRoot();
+    try {
+      const dirEntries = await fs.readdir(root, { withFileTypes: true });
+      const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
+      const entries: SnapshotEntry[] = [];
+      for (const d of dirs) {
+        const protectedEntry = await this.isCheckpoint(root, d);
+        entries.push({ name: d, isCheckpoint: protectedEntry });
+      }
+      for (const name of selectSnapshotsToPrune(entries, this.maxSnapshots)) {
+        await fs.rm(path.join(root, name), { recursive: true, force: true });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private async isCheckpoint(root: string, dir: string): Promise<boolean> {
+    try {
+      const meta = parseManifest(await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8'));
+      if (!meta) return true;
+      return isProtectedCheckpoint(meta);
+    } catch {
+      return true;
+    }
+  }
+}
+
+// Minimal unified diff generator. Produces a standard unified diff header and
+// hunks without pulling in a diff library. Line-level comparison using the
+// simple O(n*m) LCS is acceptable here because snapshots are typically small
+// edits on files an agent just touched.
+function unifiedDiff(filename: string, oldContent: string, newContent: string, oldLabel: string): string {
+  const oldLines = oldContent.split('\n');
+  const newLines = newContent.split('\n');
+
+  if (oldContent === newContent) return '';
+
+  const header = [
+    `--- a/${filename} (snapshot ${oldLabel})`,
+    `+++ b/${filename} (current)`,
+  ];
+
+  // Simple diff: output entire file as one hunk for brevity and correctness.
+  const hunkHeader = `@@ -1,${oldLines.length} +1,${newLines.length} @@`;
+  const lines = [
+    ...header,
+    hunkHeader,
+    ...oldLines.map(l => `-${l}`),
+    ...newLines.map(l => `+${l}`),
+  ];
+  return lines.join('\n');
+}

@@ -1,0 +1,233 @@
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { SnapshotEngine, SnapshotInfo } from '../src/engine.js';
+
+let tmpDir: string;
+
+async function makeTmp(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), 'nogit-mcp-test-'));
+}
+
+async function writeFile(root: string, rel: string, content: string) {
+  const abs = path.join(root, rel);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, content, 'utf8');
+}
+
+async function readFile(root: string, rel: string): Promise<string> {
+  return fs.readFile(path.join(root, rel), 'utf8');
+}
+
+async function exists(p: string): Promise<boolean> {
+  try { await fs.access(p); return true; } catch { return false; }
+}
+
+describe('SnapshotEngine', () => {
+  beforeEach(async () => {
+    tmpDir = await makeTmp();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('checkpoint captures all workspace files', async () => {
+    await writeFile(tmpDir, 'a.txt', 'hello');
+    await writeFile(tmpDir, 'sub/b.txt', 'world');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts, fileCount } = await engine.checkpoint('test-cp');
+    assert.ok(ts);
+    assert.equal(fileCount, 2);
+  });
+
+  it('listSnapshots returns checkpoints newest first', async () => {
+    await writeFile(tmpDir, 'a.txt', 'v1');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await engine.checkpoint('first');
+    await writeFile(tmpDir, 'a.txt', 'v2');
+    await engine.checkpoint('second');
+    const snaps = await engine.listSnapshots();
+    assert.equal(snaps.length, 2);
+    assert.equal(snaps[0].label, 'second');
+    assert.equal(snaps[1].label, 'first');
+  });
+
+  it('latestCheckpoint returns the newest labeled snapshot', async () => {
+    await writeFile(tmpDir, 'a.txt', 'content');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await engine.checkpoint('alpha');
+    await engine.snapshotNow();
+    await engine.checkpoint('beta');
+    const cp = await engine.latestCheckpoint();
+    assert.ok(cp);
+    assert.equal(cp.label, 'beta');
+  });
+
+  it('snapshotNow captures the workspace', async () => {
+    await writeFile(tmpDir, 'file.txt', 'data');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts, fileCount } = await engine.snapshotNow();
+    assert.ok(ts);
+    assert.equal(fileCount, 1);
+  });
+
+  it('restoreFile restores a file from a snapshot', async () => {
+    await writeFile(tmpDir, 'a.txt', 'original');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'modified');
+    const ok = await engine.restoreFile(ts, 'a.txt');
+    assert.equal(ok, true);
+    const content = await readFile(tmpDir, 'a.txt');
+    assert.equal(content, 'original');
+  });
+
+  it('restoreSnapshot restores all files', async () => {
+    await writeFile(tmpDir, 'a.txt', 'A');
+    await writeFile(tmpDir, 'b.txt', 'B');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'changed-A');
+    await writeFile(tmpDir, 'b.txt', 'changed-B');
+    const count = await engine.restoreSnapshot(ts);
+    assert.equal(count, 2);
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'A');
+    assert.equal(await readFile(tmpDir, 'b.txt'), 'B');
+  });
+
+  it('restoreCheckpointExact deletes files added after the checkpoint', async () => {
+    await writeFile(tmpDir, 'a.txt', 'keep');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'new.txt', 'added');
+    const count = await engine.restoreCheckpointExact(ts);
+    assert.equal(count, 1);
+    assert.equal(await exists(path.join(tmpDir, 'new.txt')), false);
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'keep');
+  });
+
+  it('diff returns unified diff text', async () => {
+    await writeFile(tmpDir, 'a.txt', 'line1\nline2\n');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'line1\nline2\nline3\n');
+    const diff = await engine.diff(ts, 'a.txt');
+    assert.ok(diff);
+    assert.ok(diff.includes('--- a/a.txt'));
+    assert.ok(diff.includes('+++ b/a.txt'));
+    assert.ok(diff.includes('+line3'));
+  });
+
+  it('diff returns empty string when file is unchanged', async () => {
+    await writeFile(tmpDir, 'a.txt', 'same');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const diff = await engine.diff(ts, 'a.txt');
+    assert.equal(diff, '');
+  });
+
+  it('excludes node_modules by default', async () => {
+    await writeFile(tmpDir, 'a.txt', 'yes');
+    await writeFile(tmpDir, 'node_modules/pkg/index.js', 'no');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { fileCount } = await engine.checkpoint('cp');
+    assert.equal(fileCount, 1);
+  });
+
+  it('excludes .nogit folder from snapshots', async () => {
+    await writeFile(tmpDir, 'a.txt', 'content');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await engine.checkpoint('cp1');
+    const { fileCount } = await engine.checkpoint('cp2');
+    assert.equal(fileCount, 1);
+  });
+
+  it('manifest written by engine is parseable by the extension format', async () => {
+    await writeFile(tmpDir, 'src/app.ts', 'const x = 1;');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('compat-test');
+    assert.ok(ts);
+    const metaPath = path.join(tmpDir, '.nogit', 'snapshots', ts, 'meta.json');
+    const raw = await fs.readFile(metaPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    assert.equal(parsed.timestamp, ts);
+    assert.ok(Array.isArray(parsed.files));
+    assert.ok(parsed.files.includes('src/app.ts'));
+    assert.equal(parsed.label, 'compat-test');
+    assert.equal(/^\d{8}-\d{6}(?:-\d+)?$/.test(parsed.timestamp), true);
+  });
+
+  it('rejects path traversal in restoreFile', async () => {
+    await writeFile(tmpDir, 'a.txt', 'safe');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const ok = await engine.restoreFile(ts, '../escape.txt');
+    assert.equal(ok, false);
+  });
+
+  it('rejects invalid timestamp in restoreFile', async () => {
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const ok = await engine.restoreFile('../../etc', 'a.txt');
+    assert.equal(ok, false);
+  });
+
+  it('checkpoint with empty label is a no-op', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts, fileCount } = await engine.checkpoint('   ');
+    assert.equal(ts, undefined);
+    assert.equal(fileCount, 0);
+  });
+
+  it('pruning respects maxSnapshots', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 2 });
+    await engine.snapshotNow();
+    await engine.snapshotNow();
+    await engine.snapshotNow();
+    const snaps = await engine.listSnapshots();
+    assert.equal(snaps.length, 2);
+  });
+
+  it('pruning does not delete checkpoints', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 1 });
+    await engine.checkpoint('keep-me');
+    await engine.snapshotNow();
+    await engine.snapshotNow();
+    const snaps = await engine.listSnapshots();
+    const labels = snaps.filter(s => s.label === 'keep-me');
+    assert.equal(labels.length, 1);
+  });
+
+  it('skips symlinks during snapshot', async () => {
+    await writeFile(tmpDir, 'real.txt', 'content');
+    await fs.symlink(path.join(tmpDir, 'real.txt'), path.join(tmpDir, 'link.txt'));
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const snaps = await engine.listSnapshots();
+    assert.ok(!snaps[0].files.includes('link.txt'));
+    assert.ok(snaps[0].files.includes('real.txt'));
+  });
+
+  it('skips files over maxFileSizeBytes', async () => {
+    await writeFile(tmpDir, 'small.txt', 'hi');
+    await writeFile(tmpDir, 'big.txt', 'x'.repeat(200));
+    const engine = new SnapshotEngine({ root: tmpDir, maxFileSizeBytes: 100 });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const snaps = await engine.listSnapshots();
+    assert.ok(snaps[0].files.includes('small.txt'));
+    assert.ok(!snaps[0].files.includes('big.txt'));
+  });
+});

@@ -111,6 +111,53 @@ await api?.deleteSnapshot(snapshots[0].timestamp); // permanent, not reversible
 
 The restore and delete methods run without a confirmation prompt, so an integrator that exposes them to an agent owns any confirmation.
 
+## MCP server (terminal AI agents)
+
+noGIT includes an MCP server so terminal AI agents like Claude Code can checkpoint and roll back a workspace without VS Code running. The server reads and writes the same `.nogit/` store the extension uses, so snapshots taken by an agent appear in the VS Code timeline and vice versa.
+
+### Register with Claude Code
+
+```bash
+claude mcp add nogit-mcp -- node /path/to/noGIT/mcp/dist/src/server.js --root /path/to/your/project
+```
+
+Or add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "nogit": {
+      "command": "node",
+      "args": ["/path/to/noGIT/mcp/dist/src/server.js", "--root", "."]
+    }
+  }
+}
+```
+
+### Available tools
+
+| Tool | Description |
+| --- | --- |
+| `nogit_checkpoint` | Capture a named checkpoint of the entire workspace |
+| `nogit_snapshot_now` | Capture a snapshot of all workspace files right now |
+| `nogit_list_snapshots` | List all snapshots and checkpoints, newest first |
+| `nogit_restore_file` | Restore a single file from a snapshot |
+| `nogit_restore_snapshot` | Restore all files from a snapshot (additive) |
+| `nogit_restore_checkpoint_exact` | Restore workspace to exactly a checkpoint (deletes added files) |
+| `nogit_latest_checkpoint` | Get the most recent named checkpoint |
+| `nogit_diff` | Show a unified diff between a snapshot file and the current version |
+
+All restore operations back up the current state first, so they can be undone by restoring the backup snapshot.
+
+### Build from source
+
+```bash
+cd mcp
+npm install
+npm run build
+npm test
+```
+
 ## Configuration
 
 Configure noGIT in your VS Code `settings.json`:
