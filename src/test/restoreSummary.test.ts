@@ -27,6 +27,25 @@ test('multiple skipped files are joined with a comma and space', () => {
   assert.ok(s.message.includes('a.ts, b.ts'));
 });
 
+test('lists up to ten skipped files in full', () => {
+  const files = Array.from({ length: 10 }, (_, i) => `f${i}.ts`);
+  const s = buildRestoreSummary(STAMP, 0, files);
+  assert.ok(s.message.includes('Skipped 10'));
+  assert.ok(s.message.includes('f9.ts'));
+  assert.ok(!s.message.includes('more'));
+});
+
+test('summarizes the overflow when more than ten files are skipped', () => {
+  const files = Array.from({ length: 25 }, (_, i) => `f${i}.ts`);
+  const s = buildRestoreSummary(STAMP, 0, files);
+  assert.equal(s.offerUndo, false);
+  assert.ok(s.message.includes('Skipped 25'));
+  assert.ok(s.message.includes('f0.ts'));   // first is listed
+  assert.ok(s.message.includes('f9.ts'));   // tenth is listed
+  assert.ok(!s.message.includes('f10.ts')); // eleventh is not spelled out
+  assert.ok(s.message.includes('and 15 more'));
+});
+
 test('uses the formatted stamp it is given, never a raw value', () => {
   // The caller passes formatStamp(ts); the summary must not invent its own.
   const s = buildRestoreSummary(STAMP, 1, []);
