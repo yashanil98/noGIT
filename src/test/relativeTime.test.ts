@@ -36,6 +36,16 @@ test('relativeTime switches to weeks past two weeks but stays in days just under
   assert.equal(relativeTime('20260525-120000', NOW), '3w ago');  // 21 days
 });
 
+test('relativeTime floors units so it never overstates elapsed time', () => {
+  // Under round() these each bumped up a unit and overstated the age.
+  assert.equal(relativeTime('20260615-115915', NOW), 'just now'); // 45s -> under a minute
+  assert.equal(relativeTime('20260615-115901', NOW), 'just now'); // 59s -> still under a minute
+  assert.equal(relativeTime('20260615-115900', NOW), '1m ago');   // exactly 60s
+  assert.equal(relativeTime('20260615-110800', NOW), '52m ago');  // 52m, not "1h ago"
+  assert.equal(relativeTime('20260614-123000', NOW), '23h ago');  // 23h30m, not "1d ago"
+  assert.equal(relativeTime('20260602-000000', NOW), '13d ago');  // ~13.5d, not "2w ago"
+});
+
 test('relativeTime treats a future stamp as "just now" rather than negative', () => {
   assert.equal(relativeTime('20260615-120030', NOW), 'just now'); // 30s in the future
 });

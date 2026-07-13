@@ -37,19 +37,23 @@ export function relativeTime(ts: string, nowMs: number): string {
   const then = parseSnapshotStamp(ts);
   if (then === undefined) return ts;
 
-  const diffSec = Math.round((nowMs - then) / 1000);
+  // Floor every unit so the label never claims more time has passed than
+  // actually has: 52 minutes reads as "52m ago", not "1h ago". That means
+  // anything under a full minute is "just now" (flooring 45s to minutes would
+  // otherwise give a misleading "0m ago").
+  const diffSec = Math.floor((nowMs - then) / 1000);
   if (diffSec < 0) return 'just now';   // clock skew; do not show a future time
-  if (diffSec < 45) return 'just now';
+  if (diffSec < 60) return 'just now';
 
-  const diffMin = Math.round(diffSec / 60);
+  const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `${diffMin}m ago`;
 
-  const diffHour = Math.round(diffMin / 60);
+  const diffHour = Math.floor(diffMin / 60);
   if (diffHour < 24) return `${diffHour}h ago`;
 
-  const diffDay = Math.round(diffHour / 24);
+  const diffDay = Math.floor(diffHour / 24);
   if (diffDay < 14) return `${diffDay}d ago`;
 
-  const diffWeek = Math.round(diffDay / 7);
+  const diffWeek = Math.floor(diffDay / 7);
   return `${diffWeek}w ago`;
 }
