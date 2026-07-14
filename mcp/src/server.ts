@@ -7,7 +7,13 @@ import { SnapshotEngine } from './engine.js';
 
 const VERSION = '0.1.0';
 
-function resolveRoot(): string {
+interface ParsedArgs {
+  root: string;
+  excludePatterns?: string[];
+  maxFileSizeBytes?: number;
+}
+
+function parseArgs(): ParsedArgs {
   const args = process.argv.slice(2);
   for (const arg of args) {
     if (arg === '--version' || arg === '-v') {
@@ -15,18 +21,30 @@ function resolveRoot(): string {
       process.exit(0);
     }
     if (arg === '--help' || arg === '-h') {
-      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [--root <path>]\n\nOptions:\n  --root <path>  Workspace root (default: cwd)\n  --version      Print version and exit\n  --help         Print this help and exit\n`);
+      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [options]\n\nOptions:\n  --root <path>           Workspace root (default: cwd)\n  --exclude <pattern>     Glob pattern to exclude (can be repeated)\n  --max-file-size <bytes> Max file size in bytes (default: engine default)\n  --version               Print version and exit\n  --help                  Print this help and exit\n`);
       process.exit(0);
     }
   }
+  let root = process.cwd();
+  const excludePatterns: string[] = [];
+  let maxFileSizeBytes: number | undefined;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--root' && args[i + 1]) return args[i + 1];
-    if (args[i].startsWith('--root=')) return args[i].slice('--root='.length);
+    if (args[i] === '--root' && args[i + 1]) { root = args[i + 1]; i++; }
+    else if (args[i].startsWith('--root=')) { root = args[i].slice('--root='.length); }
+    else if (args[i] === '--exclude' && args[i + 1]) { excludePatterns.push(args[i + 1]); i++; }
+    else if (args[i].startsWith('--exclude=')) { excludePatterns.push(args[i].slice('--exclude='.length)); }
+    else if (args[i] === '--max-file-size' && args[i + 1]) { maxFileSizeBytes = parseInt(args[i + 1], 10); i++; }
+    else if (args[i].startsWith('--max-file-size=')) { maxFileSizeBytes = parseInt(args[i].slice('--max-file-size='.length), 10); }
   }
-  return process.cwd();
+  return {
+    root,
+    excludePatterns: excludePatterns.length > 0 ? excludePatterns : undefined,
+    maxFileSizeBytes,
+  };
 }
 
-const root = path.resolve(resolveRoot());
+const parsed = parseArgs();
+const root = path.resolve(parsed.root);
 
 // Normalize paths that agents pass: strip absolute prefix (if within root),
 // remove leading ./ , convert backslashes, collapse double slashes.
@@ -66,7 +84,11 @@ if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
   process.exit(1);
 }
 
-const engine = new SnapshotEngine({ root });
+const engine = new SnapshotEngine({
+  root,
+  excludePatterns: parsed.excludePatterns,
+  maxFileSizeBytes: parsed.maxFileSizeBytes,
+});
 
 const server = new McpServer({
   name: 'nogit-mcp',
