@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import * as path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -13,13 +14,26 @@ function resolveRoot(): string {
   return process.cwd();
 }
 
-const root = resolveRoot();
+const root = path.resolve(resolveRoot());
 const engine = new SnapshotEngine({ root });
 
 const server = new McpServer({
   name: 'nogit-mcp',
   version: '0.1.0',
 });
+
+server.tool(
+  'nogit_status',
+  'Show the noGIT workspace status: root path, snapshot count, and latest checkpoint.',
+  async () => {
+    const snapshots = await engine.listSnapshots();
+    const cp = await engine.latestCheckpoint();
+    const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length}`];
+    if (cp) lines.push(`Latest checkpoint: ${cp.timestamp} [${cp.label}]`);
+    else lines.push('No checkpoints yet.');
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  },
+);
 
 server.tool(
   'nogit_checkpoint',

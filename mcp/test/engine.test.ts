@@ -275,6 +275,28 @@ describe('SnapshotEngine', () => {
     assert.equal(files, undefined);
   });
 
+  it('diff detects binary files gracefully', async () => {
+    const binContent = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x01]);
+    await fs.writeFile(path.join(tmpDir, 'img.png'), binContent);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.writeFile(path.join(tmpDir, 'img.png'), Buffer.from([0x89, 0x50, 0x00, 0x01]));
+    const diff = await engine.diff(ts, 'img.png');
+    assert.ok(diff);
+    assert.ok(diff.includes('Binary file'));
+  });
+
+  it('diff returns empty for identical binary files', async () => {
+    const binContent = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+    await fs.writeFile(path.join(tmpDir, 'data.bin'), binContent);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const diff = await engine.diff(ts, 'data.bin');
+    assert.equal(diff, '');
+  });
+
   it('skips files over maxFileSizeBytes', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(200));

@@ -502,20 +502,28 @@ export class SnapshotEngine {
     const workspacePath = path.join(this.root, rel);
     if (!isInside(this.root, workspacePath)) return undefined;
 
-    let snapContent: string;
+    let snapBuf: Buffer;
     try {
-      snapContent = await fs.readFile(snapPath, 'utf8');
+      snapBuf = await fs.readFile(snapPath);
     } catch {
       return undefined;
     }
 
-    let currentContent: string;
+    let currentBuf: Buffer;
     try {
-      currentContent = await fs.readFile(workspacePath, 'utf8');
+      currentBuf = await fs.readFile(workspacePath);
     } catch {
-      currentContent = '';
+      currentBuf = Buffer.alloc(0);
     }
 
+    if (isBinaryBuffer(snapBuf) || isBinaryBuffer(currentBuf)) {
+      const same = snapBuf.equals(currentBuf);
+      if (same) return '';
+      return `Binary file ${rel} differs (snapshot ${ts} vs current).`;
+    }
+
+    const snapContent = snapBuf.toString('utf8');
+    const currentContent = currentBuf.toString('utf8');
     return unifiedDiff(rel, snapContent, currentContent, ts);
   }
 
@@ -624,6 +632,15 @@ export class SnapshotEngine {
       return true;
     }
   }
+}
+
+// Detect binary content by checking for null bytes in the first 8KB.
+function isBinaryBuffer(buf: Buffer): boolean {
+  const check = Math.min(buf.length, 8192);
+  for (let i = 0; i < check; i++) {
+    if (buf[i] === 0) return true;
+  }
+  return false;
 }
 
 // Unified diff with proper context hunks. Uses a simple O(n*m) LCS to find
