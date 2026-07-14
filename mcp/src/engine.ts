@@ -185,11 +185,14 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-// --- latestCheckpoint.ts (verbatim logic) ---
+// --- latestCheckpoint.ts (adapted for MCP) ---
+// Returns the most recent manual checkpoint (has a label and is NOT auto).
+// Auto-burst snapshots created by the VS Code extension have labels like
+// "auto: 14 files changed" but are not meaningful save points for agents.
 function findLatestCheckpoint(snapshots: SnapshotInfo[]): SnapshotInfo | undefined {
   let best: SnapshotInfo | undefined;
   for (const s of snapshots) {
-    if (!s.label || s.label.length === 0) continue;
+    if (!isProtectedCheckpoint(s)) continue;
     if (best === undefined || compareSnapshotNames(s.timestamp, best.timestamp) > 0) best = s;
   }
   return best;
@@ -719,6 +722,15 @@ function isBinaryBuffer(buf: Buffer): boolean {
 // matching lines, then emits standard unified-diff hunks with 3 lines of
 // context. Acceptable for the file sizes agents typically snapshot.
 
+// Split content into lines. Drops the trailing empty element that split('\n')
+// produces when a file ends with a newline (which is normal for text files).
+// Without this, every file ending in \n would show a phantom empty context line.
+function splitLines(content: string): string[] {
+  const lines = content.split('\n');
+  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
 const CONTEXT_LINES = 3;
 
 function unifiedDiff(filename: string, oldContent: string, newContent: string, oldLabel: string): string {
@@ -726,7 +738,7 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
 
   // When the current file is gone (empty buffer), show a full deletion diff.
   if (newContent === '') {
-    const oldLines = oldContent.split('\n');
+    const oldLines = splitLines(oldContent);
     const out: string[] = [
       `--- a/${filename} (snapshot ${oldLabel})`,
       `+++ /dev/null`,
@@ -740,7 +752,7 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
 
   // When the snapshot version was empty but a file now exists, show full addition.
   if (oldContent === '') {
-    const newLines = newContent.split('\n');
+    const newLines = splitLines(newContent);
     const out: string[] = [
       `--- /dev/null`,
       `+++ b/${filename} (current)`,
@@ -752,8 +764,8 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     return out.join('\n');
   }
 
-  const oldLines = oldContent.split('\n');
-  const newLines = newContent.split('\n');
+  const oldLines = splitLines(oldContent);
+  const newLines = splitLines(newContent);
 
   const edits = myersDiff(oldLines, newLines);
   const hunks = buildHunks(edits, oldLines, newLines);
