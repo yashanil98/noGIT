@@ -337,7 +337,11 @@ export class SnapshotEngine {
     return matchesAny(this.excludes, rel);
   }
 
-  private async getSnapshotsRoot(): Promise<string> {
+  private snapshotsRootPath(): string {
+    return path.join(this.root, this.folderName, 'snapshots');
+  }
+
+  private async ensureSnapshotsRoot(): Promise<string> {
     const base = path.join(this.root, this.folderName);
     const root = path.join(base, 'snapshots');
     await fs.mkdir(root, { recursive: true });
@@ -363,7 +367,7 @@ export class SnapshotEngine {
   }
 
   private async writeSnapshotImpl(rels: string[], label?: string, auto = false): Promise<{ ts: string | undefined; files: string[] }> {
-    const snapRoot = await this.getSnapshotsRoot();
+    const snapRoot = await this.ensureSnapshotsRoot();
     let existing: string[] = [];
     try {
       const entries = await fs.readdir(snapRoot, { withFileTypes: true });
@@ -424,7 +428,7 @@ export class SnapshotEngine {
   }
 
   async listSnapshots(): Promise<SnapshotInfo[]> {
-    const root = await this.getSnapshotsRoot();
+    const root = this.snapshotsRootPath();
     let dirs: string[] = [];
     try {
       const entries = await fs.readdir(root, { withFileTypes: true });
@@ -527,7 +531,7 @@ export class SnapshotEngine {
 
   async deleteSnapshot(ts: string): Promise<boolean> {
     if (!isValidSnapshotName(ts)) return false;
-    const root = await this.getSnapshotsRoot();
+    const root = this.snapshotsRootPath();
     const dir = path.join(root, ts);
     try {
       await fs.rm(dir, { recursive: true, force: true });
@@ -644,7 +648,7 @@ export class SnapshotEngine {
   }
 
   private async readManifest(ts: string): Promise<SnapshotInfo | undefined> {
-    const snapRoot = await this.getSnapshotsRoot();
+    const snapRoot = this.snapshotsRootPath();
     const metaPath = path.join(snapRoot, ts, 'meta.json');
     try {
       return parseManifest(await fs.readFile(metaPath, 'utf8'));
@@ -712,7 +716,7 @@ export class SnapshotEngine {
   }
 
   private async pruneOldSnapshots() {
-    const root = await this.getSnapshotsRoot();
+    const root = this.snapshotsRootPath();
     try {
       const dirEntries = await fs.readdir(root, { withFileTypes: true });
       const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
