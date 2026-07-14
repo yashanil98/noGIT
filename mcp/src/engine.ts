@@ -566,17 +566,21 @@ export class SnapshotEngine {
   async diff(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;
-    const snapPath = await this.resolveSnapshotPath(ts, rel);
-    if (!snapPath) return undefined;
     const workspacePath = path.join(this.root, rel);
     if (!isInside(this.root, workspacePath)) return undefined;
     if (!(await isRealPathInside(this.root, workspacePath))) return undefined;
 
+    const snapPath = await this.resolveSnapshotPath(ts, rel);
+
     let snapBuf: Buffer;
-    try {
-      snapBuf = await fs.readFile(snapPath);
-    } catch {
-      return undefined;
+    if (snapPath) {
+      try {
+        snapBuf = await fs.readFile(snapPath);
+      } catch {
+        snapBuf = Buffer.alloc(0);
+      }
+    } else {
+      snapBuf = Buffer.alloc(0);
     }
 
     let currentBuf: Buffer;
@@ -585,6 +589,9 @@ export class SnapshotEngine {
     } catch {
       currentBuf = Buffer.alloc(0);
     }
+
+    // Both missing: nothing to diff
+    if (snapBuf.length === 0 && currentBuf.length === 0) return undefined;
 
     if (isBinaryBuffer(snapBuf) || isBinaryBuffer(currentBuf)) {
       const same = snapBuf.equals(currentBuf);

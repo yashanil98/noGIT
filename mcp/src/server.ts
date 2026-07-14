@@ -160,14 +160,14 @@ server.tool(
 
 server.tool(
   'nogit_diff',
-  'Show a unified diff between a file in a snapshot and the current workspace version.',
+  'Show a unified diff between a file in a snapshot and the current workspace version. Works for modified files, deleted files (shows removal), and new files added since the snapshot (shows addition).',
   {
     timestamp: z.string().describe('Snapshot timestamp'),
     path: z.string().describe('Workspace-relative file path to diff'),
   },
   async ({ timestamp, path: rel }) => {
     const diff = await engine.diff(timestamp, rel);
-    if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: file not found in snapshot ${timestamp} or path invalid.` }] };
+    if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${timestamp} or in the current workspace.` }] };
     if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${timestamp}.` }] };
     return { content: [{ type: 'text', text: diff }] };
   },
