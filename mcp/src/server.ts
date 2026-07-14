@@ -85,9 +85,12 @@ server.tool(
   'Capture a named checkpoint of the entire workspace. Checkpoints are protected from automatic pruning.',
   { label: z.string().describe('A short label for the checkpoint, e.g. "before refactor"') },
   async ({ label }) => {
-    const { ts, fileCount } = await engine.checkpoint(label);
+    const { ts, fileCount, totalFiles } = await engine.checkpoint(label);
     if (!ts) return { content: [{ type: 'text', text: 'Checkpoint failed: no files captured or empty label.' }] };
-    return { content: [{ type: 'text', text: `Checkpoint "${label}" saved: ${fileCount} files captured (${ts}).` }] };
+    const skipped = totalFiles - fileCount;
+    let msg = `Checkpoint "${label}" saved: ${fileCount} files captured (${ts}).`;
+    if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit). These files are NOT protected by this checkpoint.`;
+    return { content: [{ type: 'text', text: msg }] };
   },
 );
 
@@ -95,9 +98,12 @@ server.tool(
   'nogit_snapshot_now',
   'Capture a snapshot of all workspace files right now.',
   async () => {
-    const { ts, fileCount } = await engine.snapshotNow();
+    const { ts, fileCount, totalFiles } = await engine.snapshotNow();
     if (!ts) return { content: [{ type: 'text', text: 'Snapshot failed: no files captured.' }] };
-    return { content: [{ type: 'text', text: `Snapshot saved: ${fileCount} files (${ts}).` }] };
+    const skipped = totalFiles - fileCount;
+    let msg = `Snapshot saved: ${fileCount} files (${ts}).`;
+    if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit).`;
+    return { content: [{ type: 'text', text: msg }] };
   },
 );
 

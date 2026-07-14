@@ -411,20 +411,20 @@ export class SnapshotEngine {
     return { ts, files: copied };
   }
 
-  async checkpoint(label: string): Promise<{ ts: string | undefined; fileCount: number }> {
+  async checkpoint(label: string): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
     const trimmed = typeof label === 'string' ? label.trim() : '';
-    if (!trimmed) return { ts: undefined, fileCount: 0 };
+    if (!trimmed) return { ts: undefined, fileCount: 0, totalFiles: 0 };
     const rels = await this.listWorkspaceFiles();
     const { ts, files } = await this.writeSnapshot(rels, trimmed);
     await this.pruneOldSnapshots();
-    return { ts, fileCount: files.length };
+    return { ts, fileCount: files.length, totalFiles: rels.length };
   }
 
-  async snapshotNow(): Promise<{ ts: string | undefined; fileCount: number }> {
+  async snapshotNow(): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
     const rels = await this.listWorkspaceFiles();
     const { ts, files } = await this.writeSnapshot(rels);
     await this.pruneOldSnapshots();
-    return { ts, fileCount: files.length };
+    return { ts, fileCount: files.length, totalFiles: rels.length };
   }
 
   async listSnapshots(): Promise<SnapshotInfo[]> {
