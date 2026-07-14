@@ -501,6 +501,7 @@ export class SnapshotEngine {
     if (!snapPath) return undefined;
     const workspacePath = path.join(this.root, rel);
     if (!isInside(this.root, workspacePath)) return undefined;
+    if (!(await isRealPathInside(this.root, workspacePath))) return undefined;
 
     let snapBuf: Buffer;
     try {
@@ -524,6 +525,22 @@ export class SnapshotEngine {
 
     const snapContent = snapBuf.toString('utf8');
     const currentContent = currentBuf.toString('utf8');
+
+    // Guard against O(n*m) memory explosion on very large files. If both
+    // files exceed 10K lines, fall back to a summary instead of computing
+    // the full LCS table which could allocate gigabytes.
+    const snapLineCount = countLines(snapContent);
+    const currentLineCount = countLines(currentContent);
+    if (snapLineCount > 10_000 || currentLineCount > 10_000) {
+      if (snapContent === currentContent) return '';
+      return [
+        `--- a/${rel} (snapshot ${ts})`,
+        `+++ b/${rel} (current)`,
+        `File too large for line-level diff (${snapLineCount} / ${currentLineCount} lines).`,
+        `Snapshot size: ${snapBuf.length} bytes, current size: ${currentBuf.length} bytes.`,
+      ].join('\n');
+    }
+
     return unifiedDiff(rel, snapContent, currentContent, ts);
   }
 
@@ -632,6 +649,15 @@ export class SnapshotEngine {
       return true;
     }
   }
+}
+
+// Count newlines in a string. Used to guard the diff against huge files.
+function countLines(s: string): number {
+  let count = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) === 10) count++;
+  }
+  return count + 1;
 }
 
 // Detect binary content by checking for null bytes in the first 8KB.
