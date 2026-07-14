@@ -676,19 +676,20 @@ function myersDiff(oldLines: string[], newLines: string[]): Edit[] {
     }
   }
 
-  // Trace back to produce edit script
+  // Trace back to produce edit script. Prefer delete before insert so the
+  // output matches standard unified-diff convention (removals then additions).
   const edits: Edit[] = [];
   let i = 0, j = 0;
   while (i < n || j < m) {
     if (i < n && j < m && oldLines[i] === newLines[j]) {
       edits.push({ type: 'keep', oldIdx: i, newIdx: j });
       i++; j++;
-    } else if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) {
-      edits.push({ type: 'insert', oldIdx: i, newIdx: j });
-      j++;
-    } else {
+    } else if (i < n && (j >= m || dp[i + 1][j] >= dp[i][j + 1])) {
       edits.push({ type: 'delete', oldIdx: i, newIdx: j });
       i++;
+    } else {
+      edits.push({ type: 'insert', oldIdx: i, newIdx: j });
+      j++;
     }
   }
   return edits;
