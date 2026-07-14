@@ -335,4 +335,101 @@ describe('SnapshotEngine', () => {
     assert.ok(snaps[0].files.includes('small.txt'));
     assert.ok(!snaps[0].files.includes('big.txt'));
   });
+
+  it('undo reverses the most recent restore', async () => {
+    await writeFile(tmpDir, 'a.txt', 'original');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'modified');
+    await engine.restoreFile(ts, 'a.txt');
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'original');
+    const undoResult = await engine.undo();
+    assert.ok(undoResult);
+    assert.ok(undoResult.restored > 0);
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'modified');
+  });
+
+  it('undo returns undefined when no restore was done', async () => {
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const result = await engine.undo();
+    assert.equal(result, undefined);
+  });
+
+  it('undo cannot be called twice', async () => {
+    await writeFile(tmpDir, 'a.txt', 'v1');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'v2');
+    await engine.restoreFile(ts, 'a.txt');
+    await engine.undo();
+    const secondUndo = await engine.undo();
+    assert.equal(secondUndo, undefined);
+  });
+
+  it('resolveTimestamp finds checkpoint by label', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await engine.checkpoint('my-label');
+    const ts = await engine.resolveTimestamp('my-label');
+    assert.ok(ts);
+    assert.ok(/^\d{8}-\d{6}/.test(ts));
+  });
+
+  it('resolveTimestamp finds checkpoint by case-insensitive substring', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await engine.checkpoint('before-big-refactor');
+    const ts = await engine.resolveTimestamp('BIG-REFACT');
+    assert.ok(ts);
+  });
+
+  it('resolveTimestamp returns timestamp as-is when valid format', async () => {
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const ts = await engine.resolveTimestamp('20260714-120000');
+    assert.equal(ts, '20260714-120000');
+  });
+
+  it('readFile returns file content from a snapshot', async () => {
+    await writeFile(tmpDir, 'code.ts', 'const x = 1;');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'code.ts', 'const x = 2;');
+    const content = await engine.readFile(ts, 'code.ts');
+    assert.equal(content, 'const x = 1;');
+  });
+
+  it('readFile returns undefined for binary files', async () => {
+    await fs.writeFile(path.join(tmpDir, 'img.png'), Buffer.from([0x89, 0x50, 0x00, 0x47]));
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const content = await engine.readFile(ts, 'img.png');
+    assert.equal(content, undefined);
+  });
+
+  it('custom excludePatterns are respected', async () => {
+    await writeFile(tmpDir, 'keep.txt', 'yes');
+    await writeFile(tmpDir, 'logs/app.log', 'no');
+    const engine = new SnapshotEngine({ root: tmpDir, excludePatterns: ['**/logs/**'] });
+    const { ts, fileCount } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    assert.equal(fileCount, 1);
+    const files = await engine.getSnapshotFiles(ts);
+    assert.ok(files!.includes('keep.txt'));
+    assert.ok(!files!.includes('logs/app.log'));
+  });
+
+  it('custom maxFileSizeBytes is respected', async () => {
+    await writeFile(tmpDir, 'small.txt', 'hi');
+    await writeFile(tmpDir, 'big.txt', 'x'.repeat(50));
+    const engine = new SnapshotEngine({ root: tmpDir, maxFileSizeBytes: 30 });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const files = await engine.getSnapshotFiles(ts);
+    assert.ok(files!.includes('small.txt'));
+    assert.ok(!files!.includes('big.txt'));
+  });
 });

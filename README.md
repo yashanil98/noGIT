@@ -48,6 +48,22 @@ Or add to `.mcp.json` in your project:
 }
 ```
 
+### CLI flags
+
+```
+--root <path>           Workspace root (default: cwd)
+--exclude <pattern>     Glob pattern to exclude (can be repeated)
+--max-file-size <bytes> Max file size in bytes (default: 5000000)
+--watch                 Auto-checkpoint when many files change at once
+--burst-min-files <N>   Files needed to trigger auto-checkpoint (default: 10)
+```
+
+Example with watch mode and custom excludes:
+
+```bash
+claude mcp add nogit-mcp -- node /path/to/noGIT/mcp/dist/src/server.js --watch --exclude "*.log" --exclude "**/build/**"
+```
+
 ### Tools
 
 | Tool | What it does |
@@ -57,23 +73,27 @@ Or add to `.mcp.json` in your project:
 | `nogit_snapshot_now` | Snapshot all workspace files right now |
 | `nogit_list_snapshots` | List snapshots newest-first (timestamp, label, file count) |
 | `nogit_snapshot_files` | List the files inside a specific snapshot |
+| `nogit_read_file` | Read a file's content from a snapshot without restoring |
 | `nogit_diff` | Unified diff between a snapshot version and the current file |
 | `nogit_diff_summary` | Summary of all modified/added/deleted files since a snapshot |
 | `nogit_restore_file` | Restore one file from a snapshot |
 | `nogit_restore_snapshot` | Restore all files from a snapshot (additive, keeps new files) |
 | `nogit_restore_checkpoint_exact` | Hard restore: match checkpoint exactly, delete files added since |
+| `nogit_undo` | Undo the last restore operation (one click, no args needed) |
 | `nogit_latest_checkpoint` | Get the most recent named checkpoint |
 | `nogit_delete_snapshot` | Permanently delete a snapshot (irreversible) |
 
-Every restore backs up current state first, so restores are reversible.
+All tools accept checkpoint labels in place of timestamps. Omitting the timestamp defaults to the latest checkpoint. Every restore backs up current state first and reports a backup timestamp for undo.
 
 ### Typical agent workflow
 
 ```
 1. nogit_checkpoint("before refactor")
 2. ... agent does work ...
-3. nogit_diff(ts, "src/app.ts")         -- review what changed
-4. nogit_restore_checkpoint_exact(ts)   -- undo everything if needed
+3. nogit_diff_summary()                 -- see what changed at a glance
+4. nogit_diff(path: "src/app.ts")       -- inspect a specific file
+5. nogit_restore_checkpoint_exact()     -- undo everything if needed
+6. nogit_undo()                         -- changed your mind? undo the undo
 ```
 
 ## VS Code usage
