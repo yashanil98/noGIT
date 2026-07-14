@@ -737,15 +737,25 @@ export class SnapshotEngine {
   private async copyInto(src: string, rel: string): Promise<boolean> {
     const dest = path.join(this.root, rel);
     if (!isInside(this.root, dest) || !(await isRealPathInside(this.root, dest))) return false;
+    let existingMode: number | undefined;
     try {
       const st = await fs.lstat(dest);
       if (st.isSymbolicLink()) return false;
+      existingMode = st.mode;
     } catch {
       // dest does not exist yet
     }
     try {
       await fs.mkdir(path.dirname(dest), { recursive: true });
+      // Make writable if read-only, so copyFile can overwrite
+      if (existingMode !== undefined && !(existingMode & 0o200)) {
+        await fs.chmod(dest, existingMode | 0o200);
+      }
       await fs.copyFile(src, dest);
+      // Restore original permissions after overwrite
+      if (existingMode !== undefined && !(existingMode & 0o200)) {
+        await fs.chmod(dest, existingMode);
+      }
       return true;
     } catch {
       return false;
