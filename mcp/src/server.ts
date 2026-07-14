@@ -241,26 +241,30 @@ server.tool(
 
 server.tool(
   'nogit_delete_snapshot',
-  'Permanently delete a snapshot or checkpoint from the store. This is irreversible.',
-  { timestamp: z.string().describe('Snapshot timestamp to delete') },
+  'Permanently delete a snapshot or checkpoint from the store. This is irreversible. Accepts a checkpoint label instead of a timestamp.',
+  { timestamp: z.string().describe('Snapshot timestamp or checkpoint label to delete') },
   async ({ timestamp }) => {
-    const ok = await engine.deleteSnapshot(timestamp);
-    if (!ok) return { content: [{ type: 'text', text: `Delete failed: ${timestamp} not found or invalid.` }] };
-    return { content: [{ type: 'text', text: `Deleted snapshot ${timestamp}.` }] };
+    const ts = await resolveTs(timestamp);
+    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot.` }] };
+    const ok = await engine.deleteSnapshot(ts);
+    if (!ok) return { content: [{ type: 'text', text: `Delete failed: ${ts} not found or invalid.` }] };
+    return { content: [{ type: 'text', text: `Deleted snapshot ${ts}.` }] };
   },
 );
 
 server.tool(
   'nogit_snapshot_files',
-  'List the files captured in a specific snapshot. Shows first 200 files; use the count to know if truncated.',
-  { timestamp: z.string().describe('Snapshot timestamp to inspect') },
+  'List the files captured in a specific snapshot. Shows first 200 files; use the count to know if truncated. Accepts a checkpoint label instead of a timestamp.',
+  { timestamp: z.string().describe('Snapshot timestamp or checkpoint label') },
   async ({ timestamp }) => {
-    const files = await engine.getSnapshotFiles(timestamp);
-    if (!files) return { content: [{ type: 'text', text: `Snapshot ${timestamp} not found or invalid.` }] };
-    if (files.length === 0) return { content: [{ type: 'text', text: `Snapshot ${timestamp} contains no files.` }] };
+    const ts = await resolveTs(timestamp);
+    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot.` }] };
+    const files = await engine.getSnapshotFiles(ts);
+    if (!files) return { content: [{ type: 'text', text: `Snapshot ${ts} not found or invalid.` }] };
+    if (files.length === 0) return { content: [{ type: 'text', text: `Snapshot ${ts} contains no files.` }] };
     const MAX_SHOW = 200;
     const shown = files.slice(0, MAX_SHOW);
-    let text = `${files.length} files in ${timestamp}:\n${shown.join('\n')}`;
+    let text = `${files.length} files in ${ts}:\n${shown.join('\n')}`;
     if (files.length > MAX_SHOW) text += `\n... and ${files.length - MAX_SHOW} more (truncated)`;
     return { content: [{ type: 'text', text }] };
   },
