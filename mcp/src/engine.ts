@@ -276,6 +276,8 @@ export class SnapshotEngine {
   private readonly maxBytes: number;
   private readonly maxSnapshots: number;
   private readonly writeQueue = new SerialQueue();
+  private lastIssuedBase = '';
+  private lastIssuedSuffix = 0;
 
   constructor(opts: EngineOptions) {
     this.root = path.resolve(opts.root);
@@ -283,6 +285,24 @@ export class SnapshotEngine {
     this.excludes = opts.excludePatterns ?? DEFAULT_EXCLUDES;
     this.maxBytes = opts.maxFileSizeBytes ?? 5_000_000;
     this.maxSnapshots = opts.maxSnapshots ?? 48;
+  }
+
+  // Monotonic snapshot name: never reissues a name that was used earlier in
+  // this engine's lifetime, even if pruning has since deleted the directory.
+  // This prevents new snapshots from sorting as oldest and being immediately
+  // re-pruned.
+  private nextSnapshotName(base: string, existing: string[]): string {
+    const ts = uniqueSnapshotName(base, existing);
+    const [tsBase, tsSuffix] = splitSnapshotName(ts);
+    if (tsBase === this.lastIssuedBase && tsSuffix <= this.lastIssuedSuffix) {
+      const next = this.lastIssuedSuffix + 1;
+      this.lastIssuedBase = tsBase;
+      this.lastIssuedSuffix = next;
+      return next === 0 ? tsBase : `${tsBase}-${next}`;
+    }
+    this.lastIssuedBase = tsBase;
+    this.lastIssuedSuffix = tsSuffix;
+    return ts;
   }
 
   // Recursive directory walk respecting excludes. Returns workspace-relative
@@ -351,7 +371,7 @@ export class SnapshotEngine {
     } catch {
       // treat as empty
     }
-    const ts = uniqueSnapshotName(formatTimestamp(new Date()), existing);
+    const ts = this.nextSnapshotName(formatTimestamp(new Date()), existing);
     const snapDir = path.join(snapRoot, ts);
     await fs.mkdir(snapDir, { recursive: true });
 
