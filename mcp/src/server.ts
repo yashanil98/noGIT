@@ -27,6 +27,13 @@ function resolveRoot(): string {
 }
 
 const root = path.resolve(resolveRoot());
+
+import * as fs from 'node:fs';
+if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+  process.stderr.write(`nogit-mcp: error: workspace root does not exist or is not a directory: ${root}\n`);
+  process.exit(1);
+}
+
 const engine = new SnapshotEngine({ root });
 
 const server = new McpServer({
