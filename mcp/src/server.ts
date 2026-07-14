@@ -7,7 +7,13 @@ import { SnapshotEngine } from './engine.js';
 
 const VERSION = '0.1.0';
 
-function resolveRoot(): string {
+interface ParsedArgs {
+  root: string;
+  watch: boolean;
+  burstMinFiles: number;
+}
+
+function parseArgs(): ParsedArgs {
   const args = process.argv.slice(2);
   for (const arg of args) {
     if (arg === '--version' || arg === '-v') {
@@ -15,18 +21,25 @@ function resolveRoot(): string {
       process.exit(0);
     }
     if (arg === '--help' || arg === '-h') {
-      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [--root <path>]\n\nOptions:\n  --root <path>  Workspace root (default: cwd)\n  --version      Print version and exit\n  --help         Print this help and exit\n`);
+      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [--root <path>] [--watch] [--burst-min-files <N>]\n\nOptions:\n  --root <path>          Workspace root (default: cwd)\n  --watch                Enable file watcher for auto-burst checkpoints\n  --burst-min-files <N>  Minimum changed files to trigger burst snapshot (default: 10)\n  --version              Print version and exit\n  --help                 Print this help and exit\n`);
       process.exit(0);
     }
   }
+  let root = process.cwd();
+  let watch = false;
+  let burstMinFiles = 10;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--root' && args[i + 1]) return args[i + 1];
-    if (args[i].startsWith('--root=')) return args[i].slice('--root='.length);
+    if (args[i] === '--root' && args[i + 1]) { root = args[i + 1]; i++; }
+    else if (args[i].startsWith('--root=')) { root = args[i].slice('--root='.length); }
+    else if (args[i] === '--watch') { watch = true; }
+    else if (args[i] === '--burst-min-files' && args[i + 1]) { burstMinFiles = parseInt(args[i + 1], 10) || 10; i++; }
+    else if (args[i].startsWith('--burst-min-files=')) { burstMinFiles = parseInt(args[i].slice('--burst-min-files='.length), 10) || 10; }
   }
-  return process.cwd();
+  return { root, watch, burstMinFiles };
 }
 
-const root = path.resolve(resolveRoot());
+const parsed = parseArgs();
+const root = path.resolve(parsed.root);
 
 // Normalize paths that agents pass: strip absolute prefix (if within root),
 // remove leading ./ , convert backslashes, collapse double slashes.
@@ -297,6 +310,9 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  if (parsed.watch) {
+    engine.startWatching({ burstMinFiles: parsed.burstMinFiles });
+  }
 }
 
 main().catch(err => {
