@@ -43,12 +43,13 @@ const server = new McpServer({
 
 server.tool(
   'nogit_status',
-  'Show the noGIT workspace status: root path, snapshot count, and latest checkpoint.',
+  'Show the noGIT workspace status: root path, snapshot count, and most recently created checkpoint. Note: this shows when the checkpoint was taken, not which state the workspace is currently at. Use nogit_diff_summary to compare the workspace against any checkpoint.',
   async () => {
     const snapshots = await engine.listSnapshots();
+    const manualCount = snapshots.filter(s => s.label && !s.auto).length;
     const cp = await engine.latestCheckpoint();
-    const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length}`];
-    if (cp) lines.push(`Latest checkpoint: ${cp.timestamp} [${cp.label}]`);
+    const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length} (${manualCount} checkpoints, ${snapshots.length - manualCount} auto)`];
+    if (cp) lines.push(`Most recent checkpoint: ${cp.timestamp} [${cp.label}] - ${cp.files.length} files`);
     else lines.push('No checkpoints yet.');
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   },
@@ -146,11 +147,11 @@ server.tool(
 
 server.tool(
   'nogit_latest_checkpoint',
-  'Get the most recent named checkpoint (timestamp and label).',
+  'Get the most recently created named checkpoint (timestamp and label). This is the newest checkpoint by creation time, not necessarily the current workspace state.',
   async () => {
     const cp = await engine.latestCheckpoint();
     if (!cp) return { content: [{ type: 'text', text: 'No checkpoints found.' }] };
-    return { content: [{ type: 'text', text: `Latest checkpoint: ${cp.timestamp} [${cp.label}] - ${cp.files.length} files` }] };
+    return { content: [{ type: 'text', text: `Most recent checkpoint: ${cp.timestamp} [${cp.label}] - ${cp.files.length} files` }] };
   },
 );
 
