@@ -294,6 +294,22 @@ server.tool(
   },
 );
 
+server.tool(
+  'nogit_undo',
+  'Undo the last restore operation by restoring from the automatic backup.',
+  async () => {
+    const result = await engine.undo();
+    if (!result) return { content: [{ type: 'text', text: 'Nothing to undo.' }] };
+    let msg = `Undo complete: ${result.restored} files restored from backup.`;
+    if (result.skipped.length > 0) {
+      const shown = result.skipped.slice(0, 10);
+      const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
+      msg += `\nSkipped ${result.skipped.length} files: ${shown.join(', ')}${extra}`;
+    }
+    return { content: [{ type: 'text', text: msg }] };
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

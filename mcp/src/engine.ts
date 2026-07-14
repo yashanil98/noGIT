@@ -278,6 +278,7 @@ export class SnapshotEngine {
   private readonly writeQueue = new SerialQueue();
   private lastIssuedBase = '';
   private lastIssuedSuffix = 0;
+  private lastBackupTs: string | undefined;
 
   constructor(opts: EngineOptions) {
     this.root = path.resolve(opts.root);
@@ -480,6 +481,7 @@ export class SnapshotEngine {
       return { ok: false, skipped: rel };
     }
     const ok = await this.copyInto(src, rel);
+    if (ok && backup.ts) this.lastBackupTs = backup.ts;
     return { ok, backupTs: backup.ts };
   }
 
@@ -497,6 +499,7 @@ export class SnapshotEngine {
       if (await this.copyInto(src, rel)) restored++;
       else skipped.push(rel);
     }
+    if (restored > 0 && backup.ts) this.lastBackupTs = backup.ts;
     return { restored, skipped, backupTs: backup.ts };
   }
 
@@ -526,7 +529,25 @@ export class SnapshotEngine {
 
     const deletedRels = toDelete.filter(r => backup.files.has(r));
     await this.removeEmptyDirs(deletedRels);
+    if ((restored > 0 || deleted > 0) && backup.ts) this.lastBackupTs = backup.ts;
     return { restored, deleted, skipped, backupTs: backup.ts };
+  }
+
+  async undo(): Promise<{ restored: number; skipped: string[] } | undefined> {
+    if (!this.lastBackupTs) return undefined;
+    const ts = this.lastBackupTs;
+    this.lastBackupTs = undefined;
+    const snap = await this.readManifest(ts);
+    if (!snap) return undefined;
+    let restored = 0;
+    const skipped: string[] = [];
+    for (const rel of snap.files) {
+      const src = await this.resolveSnapshotPath(ts, rel);
+      if (!src) { skipped.push(rel); continue; }
+      if (await this.copyInto(src, rel)) restored++;
+      else skipped.push(rel);
+    }
+    return { restored, skipped };
   }
 
   async deleteSnapshot(ts: string): Promise<boolean> {
