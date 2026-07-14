@@ -494,6 +494,38 @@ export class SnapshotEngine {
     return snap.files;
   }
 
+  async diffSummary(ts: string): Promise<{ modified: string[]; added: string[]; deleted: string[] } | undefined> {
+    if (!isValidSnapshotName(ts)) return undefined;
+    const snap = await this.readManifest(ts);
+    if (!snap) return undefined;
+
+    const currentFiles = await this.listWorkspaceFiles();
+    const currentSet = new Set(currentFiles);
+    const snapSet = new Set(snap.files);
+
+    const deleted = snap.files.filter(f => !currentSet.has(f));
+    const added = currentFiles.filter(f => !snapSet.has(f));
+
+    const modified: string[] = [];
+    const common = snap.files.filter(f => currentSet.has(f));
+    for (const rel of common) {
+      const snapPath = await this.resolveSnapshotPath(ts, rel);
+      if (!snapPath) continue;
+      const workspacePath = path.join(this.root, rel);
+      try {
+        const [snapBuf, curBuf] = await Promise.all([
+          fs.readFile(snapPath),
+          fs.readFile(workspacePath),
+        ]);
+        if (!snapBuf.equals(curBuf)) modified.push(rel);
+      } catch {
+        modified.push(rel);
+      }
+    }
+
+    return { modified, added, deleted };
+  }
+
   async diff(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;

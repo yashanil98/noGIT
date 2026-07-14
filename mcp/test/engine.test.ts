@@ -275,6 +275,30 @@ describe('SnapshotEngine', () => {
     assert.equal(files, undefined);
   });
 
+  it('diffSummary shows modified, added, and deleted files', async () => {
+    await writeFile(tmpDir, 'keep.txt', 'keep');
+    await writeFile(tmpDir, 'change.txt', 'original');
+    await writeFile(tmpDir, 'remove.txt', 'will be deleted');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'change.txt', 'modified');
+    await writeFile(tmpDir, 'new.txt', 'added');
+    await fs.rm(path.join(tmpDir, 'remove.txt'));
+    const summary = await engine.diffSummary(ts);
+    assert.ok(summary);
+    assert.ok(summary.modified.includes('change.txt'));
+    assert.ok(summary.added.includes('new.txt'));
+    assert.ok(summary.deleted.includes('remove.txt'));
+    assert.ok(!summary.modified.includes('keep.txt'));
+  });
+
+  it('diffSummary returns undefined for invalid timestamp', async () => {
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const result = await engine.diffSummary('bad-ts');
+    assert.equal(result, undefined);
+  });
+
   it('diff detects binary files gracefully', async () => {
     const binContent = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x01]);
     await fs.writeFile(path.join(tmpDir, 'img.png'), binContent);

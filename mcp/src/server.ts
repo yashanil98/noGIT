@@ -135,6 +135,22 @@ server.tool(
 );
 
 server.tool(
+  'nogit_diff_summary',
+  'Summary of all changes between a snapshot and the current workspace: which files were modified, added, or deleted since the snapshot.',
+  { timestamp: z.string().describe('Snapshot timestamp to compare against') },
+  async ({ timestamp }) => {
+    const summary = await engine.diffSummary(timestamp);
+    if (!summary) return { content: [{ type: 'text', text: `Snapshot ${timestamp} not found or invalid.` }] };
+    const lines: string[] = [];
+    if (summary.modified.length > 0) lines.push(`Modified (${summary.modified.length}):\n${summary.modified.map(f => '  M ' + f).join('\n')}`);
+    if (summary.added.length > 0) lines.push(`Added since snapshot (${summary.added.length}):\n${summary.added.map(f => '  A ' + f).join('\n')}`);
+    if (summary.deleted.length > 0) lines.push(`Deleted since snapshot (${summary.deleted.length}):\n${summary.deleted.map(f => '  D ' + f).join('\n')}`);
+    if (lines.length === 0) lines.push('No changes since this snapshot.');
+    return { content: [{ type: 'text', text: lines.join('\n\n') }] };
+  },
+);
+
+server.tool(
   'nogit_delete_snapshot',
   'Permanently delete a snapshot or checkpoint from the store. This is irreversible.',
   { timestamp: z.string().describe('Snapshot timestamp to delete') },
