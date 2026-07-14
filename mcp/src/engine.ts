@@ -368,18 +368,42 @@ export class SnapshotEngine {
     return this.writeQueue.run(() => this.writeSnapshotImpl(rels, label, auto));
   }
 
+  // Atomically claim a unique snapshot directory. Uses non-recursive mkdir
+  // which fails with EEXIST if another process races us. Retries with a fresh
+  // name scan up to 5 times.
+  private async claimSnapshotDir(snapRoot: string): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let existing: string[] = [];
+      try {
+        const entries = await fs.readdir(snapRoot, { withFileTypes: true });
+        existing = entries.filter(e => e.isDirectory()).map(e => e.name);
+      } catch {
+        // treat as empty
+      }
+      const ts = this.nextSnapshotName(formatTimestamp(new Date()), existing);
+      try {
+        await fs.mkdir(path.join(snapRoot, ts));
+        return ts;
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') continue;
+        // Other errors (permissions etc): create with recursive as fallback
+        await fs.mkdir(path.join(snapRoot, ts), { recursive: true });
+        return ts;
+      }
+    }
+    // Fallback: use recursive mkdir (should never reach here in practice)
+    const existing = await fs.readdir(snapRoot, { withFileTypes: true })
+      .then(e => e.filter(x => x.isDirectory()).map(x => x.name))
+      .catch(() => [] as string[]);
+    const ts = this.nextSnapshotName(formatTimestamp(new Date()), existing);
+    await fs.mkdir(path.join(snapRoot, ts), { recursive: true });
+    return ts;
+  }
+
   private async writeSnapshotImpl(rels: string[], label?: string, auto = false): Promise<{ ts: string | undefined; files: string[] }> {
     const snapRoot = await this.ensureSnapshotsRoot();
-    let existing: string[] = [];
-    try {
-      const entries = await fs.readdir(snapRoot, { withFileTypes: true });
-      existing = entries.filter(e => e.isDirectory()).map(e => e.name);
-    } catch {
-      // treat as empty
-    }
-    const ts = this.nextSnapshotName(formatTimestamp(new Date()), existing);
+    const ts = await this.claimSnapshotDir(snapRoot);
     const snapDir = path.join(snapRoot, ts);
-    await fs.mkdir(snapDir, { recursive: true });
 
     const outcomes = await mapWithConcurrency(rels, COPY_CONCURRENCY, async rel => {
       try {
