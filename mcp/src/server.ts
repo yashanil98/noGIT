@@ -29,9 +29,11 @@ function resolveRoot(): string {
 const root = path.resolve(resolveRoot());
 
 // Normalize paths that agents pass: strip absolute prefix (if within root),
-// remove leading ./ , collapse double slashes. Agents commonly pass both.
+// remove leading ./ , convert backslashes, collapse double slashes.
 function normalizePath(rel: string): string {
   let p = rel;
+  // Convert Windows backslashes to forward slashes first
+  p = p.replace(/\\/g, '/');
   if (path.isAbsolute(p)) {
     const resolved = path.resolve(p);
     if (resolved.startsWith(root + path.sep) || resolved === root) {
