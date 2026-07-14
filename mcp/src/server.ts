@@ -7,6 +7,15 @@ import { SnapshotEngine } from './engine.js';
 
 const VERSION = '0.1.0';
 
+// Auto-prefix bare extension globs (*.ext, *.json) with **/ so they match
+// at any depth. Without this, --exclude *.env only excludes root-level files
+// which is never what the user intends.
+function normalizeExclude(pattern: string): string {
+  if (pattern.startsWith('**/') || pattern.includes('/')) return pattern;
+  if (pattern.startsWith('*.')) return `**/${pattern}`;
+  return pattern;
+}
+
 interface ParsedArgs {
   root: string;
   excludePatterns?: string[];
@@ -35,8 +44,8 @@ function parseArgs(): ParsedArgs {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--root' && args[i + 1]) { root = args[i + 1]; i++; }
     else if (args[i].startsWith('--root=')) { root = args[i].slice('--root='.length); }
-    else if (args[i] === '--exclude' && args[i + 1]) { excludePatterns.push(args[i + 1]); i++; }
-    else if (args[i].startsWith('--exclude=')) { excludePatterns.push(args[i].slice('--exclude='.length)); }
+    else if (args[i] === '--exclude' && args[i + 1]) { excludePatterns.push(normalizeExclude(args[i + 1])); i++; }
+    else if (args[i].startsWith('--exclude=')) { excludePatterns.push(normalizeExclude(args[i].slice('--exclude='.length))); }
     else if (args[i] === '--max-file-size' && args[i + 1]) { maxFileSizeBytes = parseInt(args[i + 1], 10); i++; }
     else if (args[i].startsWith('--max-file-size=')) { maxFileSizeBytes = parseInt(args[i].slice('--max-file-size='.length), 10); }
     else if (args[i] === '--watch') { watch = true; }
