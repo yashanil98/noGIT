@@ -607,28 +607,133 @@ export class SnapshotEngine {
   }
 }
 
-// Minimal unified diff generator. Produces a standard unified diff header and
-// hunks without pulling in a diff library. Line-level comparison using the
-// simple O(n*m) LCS is acceptable here because snapshots are typically small
-// edits on files an agent just touched.
+// Unified diff with proper context hunks. Uses a simple O(n*m) LCS to find
+// matching lines, then emits standard unified-diff hunks with 3 lines of
+// context. Acceptable for the file sizes agents typically snapshot.
+
+const CONTEXT_LINES = 3;
+
 function unifiedDiff(filename: string, oldContent: string, newContent: string, oldLabel: string): string {
+  if (oldContent === newContent) return '';
+
   const oldLines = oldContent.split('\n');
   const newLines = newContent.split('\n');
 
-  if (oldContent === newContent) return '';
+  const edits = myersDiff(oldLines, newLines);
+  const hunks = buildHunks(edits, oldLines, newLines);
 
-  const header = [
+  const out: string[] = [
     `--- a/${filename} (snapshot ${oldLabel})`,
     `+++ b/${filename} (current)`,
   ];
+  for (const hunk of hunks) {
+    out.push(hunk);
+  }
+  return out.join('\n');
+}
 
-  // Simple diff: output entire file as one hunk for brevity and correctness.
-  const hunkHeader = `@@ -1,${oldLines.length} +1,${newLines.length} @@`;
-  const lines = [
-    ...header,
-    hunkHeader,
-    ...oldLines.map(l => `-${l}`),
-    ...newLines.map(l => `+${l}`),
-  ];
-  return lines.join('\n');
+interface Edit {
+  type: 'keep' | 'delete' | 'insert';
+  oldIdx: number;
+  newIdx: number;
+}
+
+// Simple LCS-based edit script. Computes which old lines to keep, which to
+// delete, and which new lines to insert. O(n*m) space/time but fine for
+// typical source files under a few thousand lines.
+function myersDiff(oldLines: string[], newLines: string[]): Edit[] {
+  const n = oldLines.length;
+  const m = newLines.length;
+
+  // Build LCS table
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      if (oldLines[i] === newLines[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  // Trace back to produce edit script
+  const edits: Edit[] = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && oldLines[i] === newLines[j]) {
+      edits.push({ type: 'keep', oldIdx: i, newIdx: j });
+      i++; j++;
+    } else if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) {
+      edits.push({ type: 'insert', oldIdx: i, newIdx: j });
+      j++;
+    } else {
+      edits.push({ type: 'delete', oldIdx: i, newIdx: j });
+      i++;
+    }
+  }
+  return edits;
+}
+
+// Group edits into unified-diff hunks with context lines.
+function buildHunks(edits: Edit[], oldLines: string[], newLines: string[]): string[] {
+  // Find runs of changes separated by more than 2*CONTEXT_LINES of keeps.
+  const groups: Edit[][] = [];
+  let current: Edit[] = [];
+  let keepRun = 0;
+
+  for (const e of edits) {
+    if (e.type === 'keep') {
+      keepRun++;
+      if (keepRun > CONTEXT_LINES * 2 && current.length > 0) {
+        // Close current group, start fresh
+        groups.push(current);
+        current = [];
+        keepRun = 1;
+      }
+      current.push(e);
+    } else {
+      keepRun = 0;
+      current.push(e);
+    }
+  }
+  if (current.length > 0) groups.push(current);
+
+  const output: string[] = [];
+  for (const group of groups) {
+    // Trim leading/trailing keeps to at most CONTEXT_LINES
+    const firstChange = group.findIndex(e => e.type !== 'keep');
+    const lastChange = group.length - 1 - [...group].reverse().findIndex(e => e.type !== 'keep');
+
+    if (firstChange === -1) continue; // all keeps, no changes
+
+    const start = Math.max(0, firstChange - CONTEXT_LINES);
+    const end = Math.min(group.length - 1, lastChange + CONTEXT_LINES);
+    const slice = group.slice(start, end + 1);
+
+    // Compute hunk header positions
+    const oldStart = slice[0].oldIdx + 1;
+    const newStart = slice[0].newIdx + 1;
+    let oldCount = 0, newCount = 0;
+    const lines: string[] = [];
+    for (const e of slice) {
+      switch (e.type) {
+        case 'keep':
+          lines.push(` ${oldLines[e.oldIdx]}`);
+          oldCount++; newCount++;
+          break;
+        case 'delete':
+          lines.push(`-${oldLines[e.oldIdx]}`);
+          oldCount++;
+          break;
+        case 'insert':
+          lines.push(`+${newLines[e.newIdx]}`);
+          newCount++;
+          break;
+      }
+    }
+    output.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
+    output.push(...lines);
+  }
+  return output;
 }

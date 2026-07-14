@@ -112,17 +112,36 @@ describe('SnapshotEngine', () => {
     assert.equal(await readFile(tmpDir, 'a.txt'), 'keep');
   });
 
-  it('diff returns unified diff text', async () => {
-    await writeFile(tmpDir, 'a.txt', 'line1\nline2\n');
+  it('diff returns unified diff text with context', async () => {
+    await writeFile(tmpDir, 'a.txt', 'line1\nline2\nline3\nline4\nline5\n');
     const engine = new SnapshotEngine({ root: tmpDir });
     const { ts } = await engine.checkpoint('cp');
     assert.ok(ts);
-    await writeFile(tmpDir, 'a.txt', 'line1\nline2\nline3\n');
+    await writeFile(tmpDir, 'a.txt', 'line1\nline2\nchanged\nline4\nline5\n');
     const diff = await engine.diff(ts, 'a.txt');
     assert.ok(diff);
     assert.ok(diff.includes('--- a/a.txt'));
     assert.ok(diff.includes('+++ b/a.txt'));
-    assert.ok(diff.includes('+line3'));
+    assert.ok(diff.includes('-line3'));
+    assert.ok(diff.includes('+changed'));
+    assert.ok(diff.includes(' line2'), 'should have context lines');
+    assert.ok(diff.includes(' line4'), 'should have trailing context');
+  });
+
+  it('diff shows only changed hunks for large files', async () => {
+    const lines = Array.from({ length: 50 }, (_, i) => `line${i + 1}`);
+    await writeFile(tmpDir, 'big.txt', lines.join('\n'));
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    lines[25] = 'CHANGED';
+    await writeFile(tmpDir, 'big.txt', lines.join('\n'));
+    const diff = await engine.diff(ts, 'big.txt');
+    assert.ok(diff);
+    assert.ok(diff.includes('-line26'));
+    assert.ok(diff.includes('+CHANGED'));
+    assert.ok(!diff.includes(' line1'), 'should not include far-away context');
+    assert.ok(!diff.includes(' line50'), 'should not include far-away context');
   });
 
   it('diff returns empty string when file is unchanged', async () => {
