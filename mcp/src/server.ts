@@ -260,6 +260,23 @@ server.tool(
   },
 );
 
+server.tool(
+  'nogit_read_file',
+  'Read the content of a file from a snapshot without restoring it. Use this to view old versions, recover deleted functions, or compare logic without modifying the workspace. Returns the raw file content as it existed at that snapshot.',
+  {
+    timestamp: z.string().optional().describe('Snapshot timestamp or checkpoint label (default: latest checkpoint)'),
+    path: z.string().describe('Workspace-relative file path to read from the snapshot'),
+  },
+  async ({ timestamp, path: rawRel }) => {
+    const ts = await resolveTs(timestamp);
+    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to read from. Create one with nogit_checkpoint first.' }] };
+    const rel = normalizePath(rawRel);
+    const content = await engine.readFile(ts, rel);
+    if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
+    return { content: [{ type: 'text', text: content }] };
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

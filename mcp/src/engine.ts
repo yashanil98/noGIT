@@ -580,6 +580,20 @@ export class SnapshotEngine {
     return { modified, added, deleted };
   }
 
+  async readFile(ts: string, rel: string): Promise<string | undefined> {
+    if (!isValidSnapshotName(ts)) return undefined;
+    if (typeof rel !== 'string') return undefined;
+    const snapPath = await this.resolveSnapshotPath(ts, rel);
+    if (!snapPath) return undefined;
+    try {
+      const buf = await fs.readFile(snapPath);
+      if (isBinaryBuffer(buf)) return undefined;
+      return buf.toString('utf8');
+    } catch {
+      return undefined;
+    }
+  }
+
   async diff(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;
