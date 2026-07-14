@@ -454,7 +454,7 @@ export class SnapshotEngine {
     return { restored, skipped };
   }
 
-  async restoreCheckpointExact(ts: string): Promise<number | undefined> {
+  async restoreCheckpointExact(ts: string): Promise<{ restored: number; deleted: number; skipped: string[] } | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     const snap = await this.readManifest(ts);
     if (!snap || !isProtectedCheckpoint(snap)) return undefined;
@@ -462,22 +462,25 @@ export class SnapshotEngine {
     const toDelete = filesToDeleteForExactRestore(current, snap.files);
     const backup = await this.backupBeforeRestore([...snap.files, ...toDelete]);
 
+    let deleted = 0;
     for (const rel of toDelete) {
       if (!backup.files.has(rel)) continue;
-      await this.deleteWorkspaceFile(rel);
+      if (await this.deleteWorkspaceFile(rel)) deleted++;
     }
 
     let restored = 0;
+    const skipped: string[] = [];
     for (const rel of snap.files) {
       const src = await this.resolveSnapshotPath(ts, rel);
-      if (!src) continue;
-      if (!(await this.canOverwrite(rel, backup.files))) continue;
+      if (!src) { skipped.push(rel); continue; }
+      if (!(await this.canOverwrite(rel, backup.files))) { skipped.push(rel); continue; }
       if (await this.copyInto(src, rel)) restored++;
+      else skipped.push(rel);
     }
 
     const deletedRels = toDelete.filter(r => backup.files.has(r));
     await this.removeEmptyDirs(deletedRels);
-    return restored;
+    return { restored, deleted, skipped };
   }
 
   async deleteSnapshot(ts: string): Promise<boolean> {

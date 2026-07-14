@@ -125,9 +125,15 @@ server.tool(
   'Restore the workspace to exactly a checkpoint: restores its files AND deletes files added since. Only works on manual checkpoints. Current state is backed up first.',
   { timestamp: z.string().describe('Checkpoint timestamp to restore exactly') },
   async ({ timestamp }) => {
-    const count = await engine.restoreCheckpointExact(timestamp);
-    if (count === undefined) return { content: [{ type: 'text', text: `Failed: ${timestamp} is not a manual checkpoint or does not exist.` }] };
-    return { content: [{ type: 'text', text: `Exact restore complete: ${count} files restored to checkpoint ${timestamp}. Added files were deleted. Current state was backed up.` }] };
+    const result = await engine.restoreCheckpointExact(timestamp);
+    if (!result) return { content: [{ type: 'text', text: `Failed: ${timestamp} is not a manual checkpoint or does not exist.` }] };
+    let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${timestamp}. Current state was backed up.`;
+    if (result.skipped.length > 0) {
+      const shown = result.skipped.slice(0, 10);
+      const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
+      msg += `\nSkipped ${result.skipped.length} files (could not back up): ${shown.join(', ')}${extra}`;
+    }
+    return { content: [{ type: 'text', text: msg }] };
   },
 );
 

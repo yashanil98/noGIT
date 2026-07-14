@@ -107,8 +107,11 @@ describe('SnapshotEngine', () => {
     const { ts } = await engine.checkpoint('cp');
     assert.ok(ts);
     await writeFile(tmpDir, 'new.txt', 'added');
-    const count = await engine.restoreCheckpointExact(ts);
-    assert.equal(count, 1);
+    const result = await engine.restoreCheckpointExact(ts);
+    assert.ok(result);
+    assert.equal(result.restored, 1);
+    assert.equal(result.deleted, 1);
+    assert.equal(result.skipped.length, 0);
     assert.equal(await exists(path.join(tmpDir, 'new.txt')), false);
     assert.equal(await readFile(tmpDir, 'a.txt'), 'keep');
   });
