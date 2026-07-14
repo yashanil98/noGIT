@@ -330,6 +330,13 @@ server.tool(
     const rel = normalizePath(rawRel);
     const content = await engine.readFile(ts, rel);
     if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
+    const MAX_READ_BYTES = 100_000;
+    if (content.length > MAX_READ_BYTES) {
+      const truncated = content.slice(0, MAX_READ_BYTES);
+      const totalLines = content.split('\n').length;
+      const shownLines = truncated.split('\n').length;
+      return { content: [{ type: 'text', text: `${truncated}\n\n--- Truncated: showing ${shownLines} of ${totalLines} lines (${content.length} bytes total). Use nogit_restore_file to get the full file on disk.` }] };
+    }
     return { content: [{ type: 'text', text: content }] };
   },
 );
