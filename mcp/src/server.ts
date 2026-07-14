@@ -149,13 +149,15 @@ server.tool(
 
 server.tool(
   'nogit_restore_checkpoint_exact',
-  'Restore the workspace to exactly a checkpoint: restores its files AND deletes files added since. Only works on manual checkpoints. Current state is backed up first.',
-  { timestamp: z.string().describe('Checkpoint timestamp to restore exactly') },
+  'Restore the workspace to exactly a checkpoint: restores its files AND deletes files added since. This is the "undo everything" button. Only works on manual checkpoints. Current state is backed up first. Omit timestamp to restore the latest checkpoint.',
+  { timestamp: z.string().optional().describe('Checkpoint timestamp to restore exactly (default: latest checkpoint)') },
   async ({ timestamp }) => {
-    const result = await engine.restoreCheckpointExact(timestamp);
-    if (!result) return { content: [{ type: 'text', text: `Failed: ${timestamp} is not a manual checkpoint or does not exist.` }] };
+    const ts = timestamp ?? (await engine.latestCheckpoint())?.timestamp;
+    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to restore. Create one with nogit_checkpoint first.' }] };
+    const result = await engine.restoreCheckpointExact(ts);
+    if (!result) return { content: [{ type: 'text', text: `Failed: ${ts} is not a manual checkpoint or does not exist.` }] };
     const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
-    let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${timestamp}.${undo}`;
+    let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${ts}.${undo}`;
     if (result.skipped.length > 0) {
       const shown = result.skipped.slice(0, 10);
       const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
