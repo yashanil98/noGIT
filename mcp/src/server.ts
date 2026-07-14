@@ -143,7 +143,7 @@ server.tool(
 
 server.tool(
   'nogit_snapshot_now',
-  'Capture a snapshot of all workspace files right now.',
+  'Capture an unlabeled snapshot of all workspace files. Unlike checkpoints, snapshots are automatically pruned when the store exceeds its retention limit. Use nogit_checkpoint for important save points you want to keep.',
   async () => {
     const { ts, fileCount, totalFiles } = await engine.snapshotNow();
     if (!ts) return { content: [{ type: 'text', text: 'Snapshot failed: no files captured.' }] };
