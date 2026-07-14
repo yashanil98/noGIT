@@ -105,7 +105,7 @@ server.tool(
   async ({ timestamp, path: rel }) => {
     const result = await engine.restoreFile(timestamp, rel);
     if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
-    if (!result.ok) return { content: [{ type: 'text', text: `Restore failed for ${rel} from ${timestamp}.` }] };
+    if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${timestamp}. Use nogit_snapshot_files to see what files are available.` }] };
     return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${timestamp}. Current version was backed up.` }] };
   },
 );

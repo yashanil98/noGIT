@@ -429,6 +429,12 @@ export class SnapshotEngine {
     if (typeof rel !== 'string') return { ok: false };
     const src = await this.resolveSnapshotPath(ts, rel);
     if (!src) return { ok: false };
+    // Verify the snapshot file actually exists before creating a backup.
+    try {
+      await fs.access(src);
+    } catch {
+      return { ok: false };
+    }
     const backup = await this.backupBeforeRestore([rel]);
     if (!(await this.canOverwrite(rel, backup.files))) {
       return { ok: false, skipped: rel };
@@ -717,6 +723,34 @@ const CONTEXT_LINES = 3;
 
 function unifiedDiff(filename: string, oldContent: string, newContent: string, oldLabel: string): string {
   if (oldContent === newContent) return '';
+
+  // When the current file is gone (empty buffer), show a full deletion diff.
+  if (newContent === '') {
+    const oldLines = oldContent.split('\n');
+    const out: string[] = [
+      `--- a/${filename} (snapshot ${oldLabel})`,
+      `+++ /dev/null`,
+      `@@ -1,${oldLines.length} +0,0 @@`,
+    ];
+    for (const line of oldLines) {
+      out.push(`-${line}`);
+    }
+    return out.join('\n');
+  }
+
+  // When the snapshot version was empty but a file now exists, show full addition.
+  if (oldContent === '') {
+    const newLines = newContent.split('\n');
+    const out: string[] = [
+      `--- /dev/null`,
+      `+++ b/${filename} (current)`,
+      `@@ -0,0 +1,${newLines.length} @@`,
+    ];
+    for (const line of newLines) {
+      out.push(`+${line}`);
+    }
+    return out.join('\n');
+  }
 
   const oldLines = oldContent.split('\n');
   const newLines = newContent.split('\n');
