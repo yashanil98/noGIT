@@ -11,6 +11,8 @@ interface ParsedArgs {
   root: string;
   excludePatterns?: string[];
   maxFileSizeBytes?: number;
+  watch: boolean;
+  burstMinFiles: number;
 }
 
 function parseArgs(): ParsedArgs {
@@ -21,13 +23,15 @@ function parseArgs(): ParsedArgs {
       process.exit(0);
     }
     if (arg === '--help' || arg === '-h') {
-      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [options]\n\nOptions:\n  --root <path>           Workspace root (default: cwd)\n  --exclude <pattern>     Glob pattern to exclude (can be repeated)\n  --max-file-size <bytes> Max file size in bytes (default: engine default)\n  --version               Print version and exit\n  --help                  Print this help and exit\n`);
+      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [options]\n\nOptions:\n  --root <path>           Workspace root (default: cwd)\n  --exclude <pattern>     Glob pattern to exclude (can be repeated)\n  --max-file-size <bytes> Max file size in bytes (default: 5000000)\n  --watch                 Enable file watcher for auto-burst checkpoints\n  --burst-min-files <N>   Minimum changed files to trigger burst (default: 10)\n  --version               Print version and exit\n  --help                  Print this help and exit\n`);
       process.exit(0);
     }
   }
   let root = process.cwd();
   const excludePatterns: string[] = [];
   let maxFileSizeBytes: number | undefined;
+  let watch = false;
+  let burstMinFiles = 10;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--root' && args[i + 1]) { root = args[i + 1]; i++; }
     else if (args[i].startsWith('--root=')) { root = args[i].slice('--root='.length); }
@@ -35,11 +39,16 @@ function parseArgs(): ParsedArgs {
     else if (args[i].startsWith('--exclude=')) { excludePatterns.push(args[i].slice('--exclude='.length)); }
     else if (args[i] === '--max-file-size' && args[i + 1]) { maxFileSizeBytes = parseInt(args[i + 1], 10); i++; }
     else if (args[i].startsWith('--max-file-size=')) { maxFileSizeBytes = parseInt(args[i].slice('--max-file-size='.length), 10); }
+    else if (args[i] === '--watch') { watch = true; }
+    else if (args[i] === '--burst-min-files' && args[i + 1]) { burstMinFiles = parseInt(args[i + 1], 10) || 10; i++; }
+    else if (args[i].startsWith('--burst-min-files=')) { burstMinFiles = parseInt(args[i].slice('--burst-min-files='.length), 10) || 10; }
   }
   return {
     root,
     excludePatterns: excludePatterns.length > 0 ? excludePatterns : undefined,
     maxFileSizeBytes,
+    watch,
+    burstMinFiles,
   };
 }
 
@@ -335,6 +344,9 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  if (parsed.watch) {
+    engine.startWatching({ burstMinFiles: parsed.burstMinFiles });
+  }
 }
 
 main().catch(err => {

@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import * as fsWatch from 'node:fs';
 import * as path from 'node:path';
 
 // Pure modules reused from the extension, inlined here to avoid cross-package
@@ -776,6 +777,71 @@ export class SnapshotEngine {
     } catch {
       return true;
     }
+  }
+
+  // --- File watcher for auto-burst checkpoints ---
+
+  private watcher: fsWatch.FSWatcher | undefined;
+  private watchModified = new Set<string>();
+  private watchTimer: ReturnType<typeof setTimeout> | undefined;
+  private watchQuietMs = 2500;
+  private watchBurstMin = 10;
+
+  startWatching(opts?: { quietMs?: number; burstMinFiles?: number }): void {
+    if (this.watcher) return; // already watching
+    if (opts?.quietMs !== undefined) this.watchQuietMs = opts.quietMs;
+    if (opts?.burstMinFiles !== undefined) this.watchBurstMin = opts.burstMinFiles;
+
+    try {
+      this.watcher = fsWatch.watch(this.root, { recursive: true }, (eventType, filename) => {
+        if (!filename) return;
+        // Normalize to posix separators
+        const rel = filename.split(path.sep).join(path.posix.sep);
+        // Ignore changes within the snapshot folder (prevents infinite loops)
+        if (isWithinSnapshotFolder(rel, this.folderName)) return;
+        // Ignore excluded patterns
+        if (this.shouldExclude(rel)) return;
+
+        this.watchModified.add(rel);
+        this.resetWatchTimer();
+      });
+
+      this.watcher.on('error', () => {
+        // fs.watch can be flaky; silently stop on error
+        this.stopWatching();
+      });
+    } catch {
+      // watch() can throw on unsupported platforms; silently ignore
+    }
+  }
+
+  stopWatching(): void {
+    if (this.watchTimer) {
+      clearTimeout(this.watchTimer);
+      this.watchTimer = undefined;
+    }
+    if (this.watcher) {
+      this.watcher.close();
+      this.watcher = undefined;
+    }
+    this.watchModified.clear();
+  }
+
+  private resetWatchTimer(): void {
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    this.watchTimer = setTimeout(() => {
+      this.watchTimer = undefined;
+      void this.flushWatchBurst();
+    }, this.watchQuietMs);
+  }
+
+  private async flushWatchBurst(): Promise<void> {
+    if (this.watchModified.size < this.watchBurstMin) return;
+    const files = [...this.watchModified];
+    this.watchModified.clear();
+    const label = `auto: ${files.length} files changed`;
+    await this.writeSnapshot(files, label, true);
+    await this.pruneOldSnapshots();
   }
 }
 
