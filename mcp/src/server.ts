@@ -177,27 +177,31 @@ server.tool(
 
 server.tool(
   'nogit_diff',
-  'Show a unified diff between a file in a snapshot and the current workspace version. Works for modified files, deleted files (shows removal), and new files added since the snapshot (shows addition).',
+  'Show a unified diff between a file in a snapshot and the current workspace version. Works for modified files, deleted files (shows removal), and new files added since the snapshot (shows addition). Omit timestamp to diff against the latest checkpoint.',
   {
-    timestamp: z.string().describe('Snapshot timestamp'),
+    timestamp: z.string().optional().describe('Snapshot timestamp (default: latest checkpoint)'),
     path: z.string().describe('Workspace-relative file path to diff'),
   },
   async ({ timestamp, path: rawRel }) => {
+    const ts = timestamp ?? (await engine.latestCheckpoint())?.timestamp;
+    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to diff against. Create one with nogit_checkpoint first.' }] };
     const rel = normalizePath(rawRel);
-    const diff = await engine.diff(timestamp, rel);
-    if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${timestamp} or in the current workspace.` }] };
-    if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${timestamp}.` }] };
+    const diff = await engine.diff(ts, rel);
+    if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${ts} or in the current workspace.` }] };
+    if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${ts}.` }] };
     return { content: [{ type: 'text', text: diff }] };
   },
 );
 
 server.tool(
   'nogit_diff_summary',
-  'Summary of all changes between a snapshot and the current workspace: which files were modified, added, or deleted since the snapshot.',
-  { timestamp: z.string().describe('Snapshot timestamp to compare against') },
+  'Summary of all changes between a snapshot and the current workspace: which files were modified, added, or deleted since the snapshot. Omit timestamp to compare against the latest checkpoint.',
+  { timestamp: z.string().optional().describe('Snapshot timestamp to compare against (default: latest checkpoint)') },
   async ({ timestamp }) => {
-    const summary = await engine.diffSummary(timestamp);
-    if (!summary) return { content: [{ type: 'text', text: `Snapshot ${timestamp} not found or invalid.` }] };
+    const ts = timestamp ?? (await engine.latestCheckpoint())?.timestamp;
+    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to compare against. Create one with nogit_checkpoint first.' }] };
+    const summary = await engine.diffSummary(ts);
+    if (!summary) return { content: [{ type: 'text', text: `Snapshot ${ts} not found or invalid.` }] };
     const MAX_PER_CATEGORY = 100;
     const lines: string[] = [];
     const fmt = (list: string[], prefix: string, label: string) => {
