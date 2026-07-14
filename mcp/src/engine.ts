@@ -634,7 +634,7 @@ export class SnapshotEngine {
   }
 
   private async backupBeforeRestore(rels: string[]): Promise<{ ts: string | undefined; files: Set<string> }> {
-    const { ts, files } = await this.writeSnapshot(rels);
+    const { ts, files } = await this.writeSnapshot(rels, 'pre-restore backup', true);
     return { ts, files: new Set(files) };
   }
 
