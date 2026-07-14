@@ -5,8 +5,20 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { SnapshotEngine } from './engine.js';
 
+const VERSION = '0.1.0';
+
 function resolveRoot(): string {
   const args = process.argv.slice(2);
+  for (const arg of args) {
+    if (arg === '--version' || arg === '-v') {
+      process.stdout.write(`nogit-mcp ${VERSION}\n`);
+      process.exit(0);
+    }
+    if (arg === '--help' || arg === '-h') {
+      process.stdout.write(`nogit-mcp ${VERSION}\n\nMCP server for noGIT local snapshots.\n\nUsage: nogit-mcp [--root <path>]\n\nOptions:\n  --root <path>  Workspace root (default: cwd)\n  --version      Print version and exit\n  --help         Print this help and exit\n`);
+      process.exit(0);
+    }
+  }
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--root' && args[i + 1]) return args[i + 1];
     if (args[i].startsWith('--root=')) return args[i].slice('--root='.length);
@@ -19,7 +31,7 @@ const engine = new SnapshotEngine({ root });
 
 const server = new McpServer({
   name: 'nogit-mcp',
-  version: '0.1.0',
+  version: VERSION,
 });
 
 server.tool(
