@@ -50,7 +50,14 @@ function normalizePath(rel: string): string {
 // (case-insensitive, substring match). Returns the resolved timestamp or undefined.
 async function resolveTs(input: string | undefined): Promise<string | undefined> {
   if (!input) return (await engine.latestCheckpoint())?.timestamp;
-  return engine.resolveTimestamp(input);
+  const trimmed = input.trim();
+  if (!trimmed) return (await engine.latestCheckpoint())?.timestamp;
+  return engine.resolveTimestamp(trimmed);
+}
+
+function resolveTsError(input: string | undefined): string {
+  if (!input || !input.trim()) return 'No checkpoint found. Create one with nogit_checkpoint first.';
+  return `Could not resolve "${input.trim()}" to a snapshot. Check the label or timestamp with nogit_list_snapshots.`;
 }
 
 import * as fs from 'node:fs';
@@ -172,7 +179,7 @@ server.tool(
   { timestamp: z.string().optional().describe('Checkpoint timestamp or label (default: latest checkpoint)') },
   async ({ timestamp }) => {
     const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to restore. Create one with nogit_checkpoint first.' }] };
+    if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const result = await engine.restoreCheckpointExact(ts);
     if (!result) return { content: [{ type: 'text', text: `Failed: ${ts} is not a manual checkpoint or does not exist.` }] };
     const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
@@ -205,7 +212,7 @@ server.tool(
   },
   async ({ timestamp, path: rawRel }) => {
     const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to diff against. Create one with nogit_checkpoint first.' }] };
+    if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const rel = normalizePath(rawRel);
     const diff = await engine.diff(ts, rel);
     if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${ts} or in the current workspace.` }] };
@@ -220,7 +227,7 @@ server.tool(
   { timestamp: z.string().optional().describe('Snapshot timestamp or checkpoint label (default: latest checkpoint)') },
   async ({ timestamp }) => {
     const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to compare against. Create one with nogit_checkpoint first.' }] };
+    if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const summary = await engine.diffSummary(ts);
     if (!summary) return { content: [{ type: 'text', text: `Snapshot ${ts} not found or invalid.` }] };
     const MAX_PER_CATEGORY = 100;
@@ -279,7 +286,7 @@ server.tool(
   },
   async ({ timestamp, path: rawRel }) => {
     const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to read from. Create one with nogit_checkpoint first.' }] };
+    if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const rel = normalizePath(rawRel);
     const content = await engine.readFile(ts, rel);
     if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
