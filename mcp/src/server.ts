@@ -58,17 +58,20 @@ server.tool(
 
 server.tool(
   'nogit_list_snapshots',
-  'List all snapshots and checkpoints, newest first. Returns timestamp, label, and file count.',
+  'List all snapshots and checkpoints, newest first. Returns timestamp, label, and file count. Shows up to 50 most recent.',
   async () => {
     const snapshots = await engine.listSnapshots();
     if (snapshots.length === 0) {
       return { content: [{ type: 'text', text: 'No snapshots found.' }] };
     }
-    const lines = snapshots.map(s => {
+    const MAX_SHOW = 50;
+    const shown = snapshots.slice(0, MAX_SHOW);
+    const lines = shown.map(s => {
       const label = s.label ? ` [${s.label}]` : '';
       const auto = s.auto ? ' (auto)' : '';
       return `${s.timestamp}${label}${auto} - ${s.files.length} files`;
     });
+    if (snapshots.length > MAX_SHOW) lines.push(`... and ${snapshots.length - MAX_SHOW} older snapshots`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   },
 );

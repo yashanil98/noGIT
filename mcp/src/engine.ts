@@ -563,12 +563,12 @@ export class SnapshotEngine {
     const snapContent = snapBuf.toString('utf8');
     const currentContent = currentBuf.toString('utf8');
 
-    // Guard against O(n*m) memory explosion on very large files. If both
-    // files exceed 10K lines, fall back to a summary instead of computing
-    // the full LCS table which could allocate gigabytes.
+    // Guard against O(n*m) memory explosion on large files. A 5000x5000
+    // table is ~200MB which is acceptable; beyond that, fall back to a
+    // summary. The product of the two line counts is the real constraint.
     const snapLineCount = countLines(snapContent);
     const currentLineCount = countLines(currentContent);
-    if (snapLineCount > 10_000 || currentLineCount > 10_000) {
+    if (snapLineCount > 5_000 || currentLineCount > 5_000) {
       if (snapContent === currentContent) return '';
       return [
         `--- a/${rel} (snapshot ${ts})`,
