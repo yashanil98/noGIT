@@ -28,6 +28,22 @@ function resolveRoot(): string {
 
 const root = path.resolve(resolveRoot());
 
+// Normalize paths that agents pass: strip absolute prefix (if within root),
+// remove leading ./ , collapse double slashes. Agents commonly pass both.
+function normalizePath(rel: string): string {
+  let p = rel;
+  if (path.isAbsolute(p)) {
+    const resolved = path.resolve(p);
+    if (resolved.startsWith(root + path.sep) || resolved === root) {
+      p = path.relative(root, resolved);
+    }
+  }
+  // Remove leading ./
+  p = p.replace(/^\.\//, '');
+  // Normalize path separators and collapse
+  return path.posix.normalize(p);
+}
+
 import * as fs from 'node:fs';
 if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
   process.stderr.write(`nogit-mcp: error: workspace root does not exist or is not a directory: ${root}\n`);
@@ -103,7 +119,8 @@ server.tool(
     timestamp: z.string().describe('Snapshot timestamp (from nogit_list_snapshots)'),
     path: z.string().describe('Workspace-relative file path to restore'),
   },
-  async ({ timestamp, path: rel }) => {
+  async ({ timestamp, path: rawRel }) => {
+    const rel = normalizePath(rawRel);
     const result = await engine.restoreFile(timestamp, rel);
     if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
     if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${timestamp}. Use nogit_snapshot_files to see what files are available.` }] };
@@ -165,7 +182,8 @@ server.tool(
     timestamp: z.string().describe('Snapshot timestamp'),
     path: z.string().describe('Workspace-relative file path to diff'),
   },
-  async ({ timestamp, path: rel }) => {
+  async ({ timestamp, path: rawRel }) => {
+    const rel = normalizePath(rawRel);
     const diff = await engine.diff(timestamp, rel);
     if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${timestamp} or in the current workspace.` }] };
     if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${timestamp}.` }] };
