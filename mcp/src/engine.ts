@@ -825,6 +825,10 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
   const oldLines = splitLines(oldContent);
   const newLines = splitLines(newContent);
 
+  // If lines are identical after normalization (only trailing newline differs),
+  // treat as no meaningful change.
+  if (oldLines.length === newLines.length && oldLines.every((l, i) => l === newLines[i])) return '';
+
   const edits = myersDiff(oldLines, newLines);
   const hunks = buildHunks(edits, oldLines, newLines);
 
