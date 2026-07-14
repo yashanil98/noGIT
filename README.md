@@ -55,11 +55,13 @@ Or add to `.mcp.json` in your project:
 | `nogit_checkpoint` | Snapshot the entire workspace with a label (protected from pruning) |
 | `nogit_snapshot_now` | Snapshot all workspace files right now |
 | `nogit_list_snapshots` | List snapshots newest-first (timestamp, label, file count) |
+| `nogit_snapshot_files` | List the files inside a specific snapshot |
 | `nogit_restore_file` | Restore one file from a snapshot |
 | `nogit_restore_snapshot` | Restore all files from a snapshot (additive, keeps new files) |
 | `nogit_restore_checkpoint_exact` | Hard restore: match checkpoint exactly, delete files added since |
 | `nogit_latest_checkpoint` | Get the most recent named checkpoint |
 | `nogit_diff` | Unified diff between a snapshot version and the current file |
+| `nogit_delete_snapshot` | Permanently delete a snapshot (irreversible) |
 
 Every restore backs up current state first, so restores are reversible.
 

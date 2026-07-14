@@ -239,6 +239,42 @@ describe('SnapshotEngine', () => {
     assert.ok(snaps[0].files.includes('real.txt'));
   });
 
+  it('deleteSnapshot removes a snapshot', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('doomed');
+    assert.ok(ts);
+    const ok = await engine.deleteSnapshot(ts);
+    assert.equal(ok, true);
+    const snaps = await engine.listSnapshots();
+    assert.equal(snaps.filter(s => s.timestamp === ts).length, 0);
+  });
+
+  it('deleteSnapshot returns false for invalid timestamp', async () => {
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const ok = await engine.deleteSnapshot('../../bad');
+    assert.equal(ok, false);
+  });
+
+  it('getSnapshotFiles returns file list', async () => {
+    await writeFile(tmpDir, 'a.txt', 'hello');
+    await writeFile(tmpDir, 'b.txt', 'world');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const files = await engine.getSnapshotFiles(ts);
+    assert.ok(files);
+    assert.ok(files.includes('a.txt'));
+    assert.ok(files.includes('b.txt'));
+    assert.equal(files.length, 2);
+  });
+
+  it('getSnapshotFiles returns undefined for missing snapshot', async () => {
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const files = await engine.getSnapshotFiles('99991231-235959');
+    assert.equal(files, undefined);
+  });
+
   it('skips files over maxFileSizeBytes', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(200));

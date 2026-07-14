@@ -475,6 +475,25 @@ export class SnapshotEngine {
     return restored;
   }
 
+  async deleteSnapshot(ts: string): Promise<boolean> {
+    if (!isValidSnapshotName(ts)) return false;
+    const root = await this.getSnapshotsRoot();
+    const dir = path.join(root, ts);
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async getSnapshotFiles(ts: string): Promise<string[] | undefined> {
+    if (!isValidSnapshotName(ts)) return undefined;
+    const snap = await this.readManifest(ts);
+    if (!snap) return undefined;
+    return snap.files;
+  }
+
   async diff(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;

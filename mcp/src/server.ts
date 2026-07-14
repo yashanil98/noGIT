@@ -120,6 +120,29 @@ server.tool(
   },
 );
 
+server.tool(
+  'nogit_delete_snapshot',
+  'Permanently delete a snapshot or checkpoint from the store. This is irreversible.',
+  { timestamp: z.string().describe('Snapshot timestamp to delete') },
+  async ({ timestamp }) => {
+    const ok = await engine.deleteSnapshot(timestamp);
+    if (!ok) return { content: [{ type: 'text', text: `Delete failed: ${timestamp} not found or invalid.` }] };
+    return { content: [{ type: 'text', text: `Deleted snapshot ${timestamp}.` }] };
+  },
+);
+
+server.tool(
+  'nogit_snapshot_files',
+  'List the files captured in a specific snapshot. Useful to inspect what a snapshot contains before restoring.',
+  { timestamp: z.string().describe('Snapshot timestamp to inspect') },
+  async ({ timestamp }) => {
+    const files = await engine.getSnapshotFiles(timestamp);
+    if (!files) return { content: [{ type: 'text', text: `Snapshot ${timestamp} not found or invalid.` }] };
+    if (files.length === 0) return { content: [{ type: 'text', text: `Snapshot ${timestamp} contains no files.` }] };
+    return { content: [{ type: 'text', text: `${files.length} files in ${timestamp}:\n${files.join('\n')}` }] };
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
