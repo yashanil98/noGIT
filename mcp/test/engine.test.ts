@@ -80,13 +80,13 @@ describe('SnapshotEngine', () => {
     const { ts } = await engine.checkpoint('cp');
     assert.ok(ts);
     await writeFile(tmpDir, 'a.txt', 'modified');
-    const ok = await engine.restoreFile(ts, 'a.txt');
-    assert.equal(ok, true);
+    const result = await engine.restoreFile(ts, 'a.txt');
+    assert.equal(result.ok, true);
     const content = await readFile(tmpDir, 'a.txt');
     assert.equal(content, 'original');
   });
 
-  it('restoreSnapshot restores all files', async () => {
+  it('restoreSnapshot restores all files and reports skipped', async () => {
     await writeFile(tmpDir, 'a.txt', 'A');
     await writeFile(tmpDir, 'b.txt', 'B');
     const engine = new SnapshotEngine({ root: tmpDir });
@@ -94,8 +94,9 @@ describe('SnapshotEngine', () => {
     assert.ok(ts);
     await writeFile(tmpDir, 'a.txt', 'changed-A');
     await writeFile(tmpDir, 'b.txt', 'changed-B');
-    const count = await engine.restoreSnapshot(ts);
-    assert.equal(count, 2);
+    const { restored, skipped } = await engine.restoreSnapshot(ts);
+    assert.equal(restored, 2);
+    assert.equal(skipped.length, 0);
     assert.equal(await readFile(tmpDir, 'a.txt'), 'A');
     assert.equal(await readFile(tmpDir, 'b.txt'), 'B');
   });
@@ -189,14 +190,14 @@ describe('SnapshotEngine', () => {
     const engine = new SnapshotEngine({ root: tmpDir });
     const { ts } = await engine.checkpoint('cp');
     assert.ok(ts);
-    const ok = await engine.restoreFile(ts, '../escape.txt');
-    assert.equal(ok, false);
+    const result = await engine.restoreFile(ts, '../escape.txt');
+    assert.equal(result.ok, false);
   });
 
   it('rejects invalid timestamp in restoreFile', async () => {
     const engine = new SnapshotEngine({ root: tmpDir });
-    const ok = await engine.restoreFile('../../etc', 'a.txt');
-    assert.equal(ok, false);
+    const result = await engine.restoreFile('../../etc', 'a.txt');
+    assert.equal(result.ok, false);
   });
 
   it('checkpoint with empty label is a no-op', async () => {

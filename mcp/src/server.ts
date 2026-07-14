@@ -81,8 +81,9 @@ server.tool(
     path: z.string().describe('Workspace-relative file path to restore'),
   },
   async ({ timestamp, path: rel }) => {
-    const ok = await engine.restoreFile(timestamp, rel);
-    if (!ok) return { content: [{ type: 'text', text: `Restore failed for ${rel} from ${timestamp}.` }] };
+    const result = await engine.restoreFile(timestamp, rel);
+    if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
+    if (!result.ok) return { content: [{ type: 'text', text: `Restore failed for ${rel} from ${timestamp}.` }] };
     return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${timestamp}. Current version was backed up.` }] };
   },
 );
@@ -92,9 +93,15 @@ server.tool(
   'Restore all files from a snapshot (additive, does not delete files added since). Current state is backed up first.',
   { timestamp: z.string().describe('Snapshot timestamp to restore') },
   async ({ timestamp }) => {
-    const count = await engine.restoreSnapshot(timestamp);
-    if (count === 0) return { content: [{ type: 'text', text: `Restore failed or no files restored from ${timestamp}.` }] };
-    return { content: [{ type: 'text', text: `Restored ${count} files from snapshot ${timestamp}. Current state was backed up.` }] };
+    const { restored, skipped } = await engine.restoreSnapshot(timestamp);
+    if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${timestamp} not found or contains no files.` }] };
+    let msg = `Restored ${restored} files from snapshot ${timestamp}. Current state was backed up.`;
+    if (skipped.length > 0) {
+      const shown = skipped.slice(0, 10);
+      const extra = skipped.length > 10 ? ` and ${skipped.length - 10} more` : '';
+      msg += `\nSkipped ${skipped.length} files (could not back up or copy): ${shown.join(', ')}${extra}`;
+    }
+    return { content: [{ type: 'text', text: msg }] };
   },
 );
 
@@ -141,10 +148,17 @@ server.tool(
   async ({ timestamp }) => {
     const summary = await engine.diffSummary(timestamp);
     if (!summary) return { content: [{ type: 'text', text: `Snapshot ${timestamp} not found or invalid.` }] };
+    const MAX_PER_CATEGORY = 100;
     const lines: string[] = [];
-    if (summary.modified.length > 0) lines.push(`Modified (${summary.modified.length}):\n${summary.modified.map(f => '  M ' + f).join('\n')}`);
-    if (summary.added.length > 0) lines.push(`Added since snapshot (${summary.added.length}):\n${summary.added.map(f => '  A ' + f).join('\n')}`);
-    if (summary.deleted.length > 0) lines.push(`Deleted since snapshot (${summary.deleted.length}):\n${summary.deleted.map(f => '  D ' + f).join('\n')}`);
+    const fmt = (list: string[], prefix: string, label: string) => {
+      if (list.length === 0) return;
+      const shown = list.slice(0, MAX_PER_CATEGORY);
+      lines.push(`${label} (${list.length}):\n${shown.map(f => '  ' + prefix + ' ' + f).join('\n')}`);
+      if (list.length > MAX_PER_CATEGORY) lines.push(`  ... and ${list.length - MAX_PER_CATEGORY} more`);
+    };
+    fmt(summary.modified, 'M', 'Modified');
+    fmt(summary.added, 'A', 'Added since snapshot');
+    fmt(summary.deleted, 'D', 'Deleted since snapshot');
     if (lines.length === 0) lines.push('No changes since this snapshot.');
     return { content: [{ type: 'text', text: lines.join('\n\n') }] };
   },
@@ -163,13 +177,17 @@ server.tool(
 
 server.tool(
   'nogit_snapshot_files',
-  'List the files captured in a specific snapshot. Useful to inspect what a snapshot contains before restoring.',
+  'List the files captured in a specific snapshot. Shows first 200 files; use the count to know if truncated.',
   { timestamp: z.string().describe('Snapshot timestamp to inspect') },
   async ({ timestamp }) => {
     const files = await engine.getSnapshotFiles(timestamp);
     if (!files) return { content: [{ type: 'text', text: `Snapshot ${timestamp} not found or invalid.` }] };
     if (files.length === 0) return { content: [{ type: 'text', text: `Snapshot ${timestamp} contains no files.` }] };
-    return { content: [{ type: 'text', text: `${files.length} files in ${timestamp}:\n${files.join('\n')}` }] };
+    const MAX_SHOW = 200;
+    const shown = files.slice(0, MAX_SHOW);
+    let text = `${files.length} files in ${timestamp}:\n${shown.join('\n')}`;
+    if (files.length > MAX_SHOW) text += `\n... and ${files.length - MAX_SHOW} more (truncated)`;
+    return { content: [{ type: 'text', text }] };
   },
 );
 

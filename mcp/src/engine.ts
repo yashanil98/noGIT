@@ -424,29 +424,34 @@ export class SnapshotEngine {
     return findLatestCheckpoint(await this.listSnapshots());
   }
 
-  async restoreFile(ts: string, rel: string): Promise<boolean> {
-    if (!isValidSnapshotName(ts)) return false;
-    if (typeof rel !== 'string') return false;
+  async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string }> {
+    if (!isValidSnapshotName(ts)) return { ok: false };
+    if (typeof rel !== 'string') return { ok: false };
     const src = await this.resolveSnapshotPath(ts, rel);
-    if (!src) return false;
+    if (!src) return { ok: false };
     const backup = await this.backupBeforeRestore([rel]);
-    if (!(await this.canOverwrite(rel, backup.files))) return false;
-    return this.copyInto(src, rel);
+    if (!(await this.canOverwrite(rel, backup.files))) {
+      return { ok: false, skipped: rel };
+    }
+    const ok = await this.copyInto(src, rel);
+    return { ok };
   }
 
-  async restoreSnapshot(ts: string): Promise<number> {
-    if (!isValidSnapshotName(ts)) return 0;
+  async restoreSnapshot(ts: string): Promise<{ restored: number; skipped: string[] }> {
+    if (!isValidSnapshotName(ts)) return { restored: 0, skipped: [] };
     const snap = await this.readManifest(ts);
-    if (!snap) return 0;
+    if (!snap) return { restored: 0, skipped: [] };
     const backup = await this.backupBeforeRestore(snap.files);
     let restored = 0;
+    const skipped: string[] = [];
     for (const rel of snap.files) {
       const src = await this.resolveSnapshotPath(ts, rel);
-      if (!src) continue;
-      if (!(await this.canOverwrite(rel, backup.files))) continue;
+      if (!src) { skipped.push(rel); continue; }
+      if (!(await this.canOverwrite(rel, backup.files))) { skipped.push(rel); continue; }
       if (await this.copyInto(src, rel)) restored++;
+      else skipped.push(rel);
     }
-    return restored;
+    return { restored, skipped };
   }
 
   async restoreCheckpointExact(ts: string): Promise<number | undefined> {
