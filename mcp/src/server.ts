@@ -44,6 +44,13 @@ function normalizePath(rel: string): string {
   return path.posix.normalize(p);
 }
 
+// Resolve timestamp-or-label: accepts a raw timestamp or a checkpoint label
+// (case-insensitive, substring match). Returns the resolved timestamp or undefined.
+async function resolveTs(input: string | undefined): Promise<string | undefined> {
+  if (!input) return (await engine.latestCheckpoint())?.timestamp;
+  return engine.resolveTimestamp(input);
+}
+
 import * as fs from 'node:fs';
 if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
   process.stderr.write(`nogit-mcp: error: workspace root does not exist or is not a directory: ${root}\n`);
@@ -116,28 +123,32 @@ server.tool(
   'nogit_restore_file',
   'Restore a single file from a snapshot. The current version is backed up first.',
   {
-    timestamp: z.string().describe('Snapshot timestamp (from nogit_list_snapshots)'),
+    timestamp: z.string().describe('Snapshot timestamp or checkpoint label'),
     path: z.string().describe('Workspace-relative file path to restore'),
   },
   async ({ timestamp, path: rawRel }) => {
+    const ts = await resolveTs(timestamp);
+    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
     const rel = normalizePath(rawRel);
-    const result = await engine.restoreFile(timestamp, rel);
+    const result = await engine.restoreFile(ts, rel);
     if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
-    if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${timestamp}. Use nogit_snapshot_files to see what files are available.` }] };
+    if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
     const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
-    return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${timestamp}.${undo}` }] };
+    return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${ts}.${undo}` }] };
   },
 );
 
 server.tool(
   'nogit_restore_snapshot',
   'Restore all files from a snapshot (additive, does not delete files added since). Current state is backed up first.',
-  { timestamp: z.string().describe('Snapshot timestamp to restore') },
+  { timestamp: z.string().describe('Snapshot timestamp or checkpoint label') },
   async ({ timestamp }) => {
-    const { restored, skipped, backupTs } = await engine.restoreSnapshot(timestamp);
-    if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${timestamp} not found or contains no files.` }] };
+    const ts = await resolveTs(timestamp);
+    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
+    const { restored, skipped, backupTs } = await engine.restoreSnapshot(ts);
+    if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${ts} not found or contains no files.` }] };
     const undo = backupTs ? ` To undo, restore from backup ${backupTs}.` : '';
-    let msg = `Restored ${restored} files from snapshot ${timestamp}.${undo}`;
+    let msg = `Restored ${restored} files from snapshot ${ts}.${undo}`;
     if (skipped.length > 0) {
       const shown = skipped.slice(0, 10);
       const extra = skipped.length > 10 ? ` and ${skipped.length - 10} more` : '';
@@ -149,10 +160,10 @@ server.tool(
 
 server.tool(
   'nogit_restore_checkpoint_exact',
-  'Restore the workspace to exactly a checkpoint: restores its files AND deletes files added since. This is the "undo everything" button. Only works on manual checkpoints. Current state is backed up first. Omit timestamp to restore the latest checkpoint.',
-  { timestamp: z.string().optional().describe('Checkpoint timestamp to restore exactly (default: latest checkpoint)') },
+  'Restore the workspace to exactly a checkpoint: restores its files AND deletes files added since. This is the "undo everything" button. Only works on manual checkpoints. Current state is backed up first. Omit timestamp to restore the latest checkpoint. Accepts a checkpoint label instead of a timestamp.',
+  { timestamp: z.string().optional().describe('Checkpoint timestamp or label (default: latest checkpoint)') },
   async ({ timestamp }) => {
-    const ts = timestamp ?? (await engine.latestCheckpoint())?.timestamp;
+    const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to restore. Create one with nogit_checkpoint first.' }] };
     const result = await engine.restoreCheckpointExact(ts);
     if (!result) return { content: [{ type: 'text', text: `Failed: ${ts} is not a manual checkpoint or does not exist.` }] };
@@ -179,13 +190,13 @@ server.tool(
 
 server.tool(
   'nogit_diff',
-  'Show a unified diff between a file in a snapshot and the current workspace version. Works for modified files, deleted files (shows removal), and new files added since the snapshot (shows addition). Omit timestamp to diff against the latest checkpoint.',
+  'Show a unified diff between a file in a snapshot and the current workspace version. Works for modified files, deleted files (shows removal), and new files added since the snapshot (shows addition). Omit timestamp to diff against the latest checkpoint. Accepts a checkpoint label instead of a timestamp.',
   {
-    timestamp: z.string().optional().describe('Snapshot timestamp (default: latest checkpoint)'),
+    timestamp: z.string().optional().describe('Snapshot timestamp or checkpoint label (default: latest checkpoint)'),
     path: z.string().describe('Workspace-relative file path to diff'),
   },
   async ({ timestamp, path: rawRel }) => {
-    const ts = timestamp ?? (await engine.latestCheckpoint())?.timestamp;
+    const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to diff against. Create one with nogit_checkpoint first.' }] };
     const rel = normalizePath(rawRel);
     const diff = await engine.diff(ts, rel);
@@ -197,10 +208,10 @@ server.tool(
 
 server.tool(
   'nogit_diff_summary',
-  'Summary of all changes between a snapshot and the current workspace: which files were modified, added, or deleted since the snapshot. Omit timestamp to compare against the latest checkpoint.',
-  { timestamp: z.string().optional().describe('Snapshot timestamp to compare against (default: latest checkpoint)') },
+  'Summary of all changes between a snapshot and the current workspace: which files were modified, added, or deleted since the snapshot. Omit timestamp to compare against the latest checkpoint. Accepts a checkpoint label instead of a timestamp.',
+  { timestamp: z.string().optional().describe('Snapshot timestamp or checkpoint label (default: latest checkpoint)') },
   async ({ timestamp }) => {
-    const ts = timestamp ?? (await engine.latestCheckpoint())?.timestamp;
+    const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: 'No checkpoint to compare against. Create one with nogit_checkpoint first.' }] };
     const summary = await engine.diffSummary(ts);
     if (!summary) return { content: [{ type: 'text', text: `Snapshot ${ts} not found or invalid.` }] };

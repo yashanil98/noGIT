@@ -447,6 +447,19 @@ export class SnapshotEngine {
     return findLatestCheckpoint(await this.listSnapshots());
   }
 
+  // Resolve a timestamp or label to a timestamp. If the input already matches
+  // the timestamp format, return it as-is. Otherwise, search for the most
+  // recent checkpoint whose label matches (case-insensitive substring).
+  async resolveTimestamp(input: string): Promise<string | undefined> {
+    if (isValidSnapshotName(input)) return input;
+    const snapshots = await this.listSnapshots();
+    const lower = input.toLowerCase();
+    const match = snapshots.find(s => s.label?.toLowerCase() === lower);
+    if (match) return match.timestamp;
+    const substr = snapshots.find(s => s.label?.toLowerCase().includes(lower));
+    return substr?.timestamp;
+  }
+
   async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
     if (!isValidSnapshotName(ts)) return { ok: false };
     if (typeof rel !== 'string') return { ok: false };
