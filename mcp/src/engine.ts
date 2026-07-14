@@ -447,7 +447,7 @@ export class SnapshotEngine {
     return findLatestCheckpoint(await this.listSnapshots());
   }
 
-  async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string }> {
+  async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
     if (!isValidSnapshotName(ts)) return { ok: false };
     if (typeof rel !== 'string') return { ok: false };
     const src = await this.resolveSnapshotPath(ts, rel);
@@ -463,10 +463,10 @@ export class SnapshotEngine {
       return { ok: false, skipped: rel };
     }
     const ok = await this.copyInto(src, rel);
-    return { ok };
+    return { ok, backupTs: backup.ts };
   }
 
-  async restoreSnapshot(ts: string): Promise<{ restored: number; skipped: string[] }> {
+  async restoreSnapshot(ts: string): Promise<{ restored: number; skipped: string[]; backupTs?: string }> {
     if (!isValidSnapshotName(ts)) return { restored: 0, skipped: [] };
     const snap = await this.readManifest(ts);
     if (!snap) return { restored: 0, skipped: [] };
@@ -480,10 +480,10 @@ export class SnapshotEngine {
       if (await this.copyInto(src, rel)) restored++;
       else skipped.push(rel);
     }
-    return { restored, skipped };
+    return { restored, skipped, backupTs: backup.ts };
   }
 
-  async restoreCheckpointExact(ts: string): Promise<{ restored: number; deleted: number; skipped: string[] } | undefined> {
+  async restoreCheckpointExact(ts: string): Promise<{ restored: number; deleted: number; skipped: string[]; backupTs?: string } | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     const snap = await this.readManifest(ts);
     if (!snap || !isProtectedCheckpoint(snap)) return undefined;
@@ -509,7 +509,7 @@ export class SnapshotEngine {
 
     const deletedRels = toDelete.filter(r => backup.files.has(r));
     await this.removeEmptyDirs(deletedRels);
-    return { restored, deleted, skipped };
+    return { restored, deleted, skipped, backupTs: backup.ts };
   }
 
   async deleteSnapshot(ts: string): Promise<boolean> {

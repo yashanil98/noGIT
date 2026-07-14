@@ -107,7 +107,8 @@ server.tool(
     const result = await engine.restoreFile(timestamp, rel);
     if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
     if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${timestamp}. Use nogit_snapshot_files to see what files are available.` }] };
-    return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${timestamp}. Current version was backed up.` }] };
+    const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
+    return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${timestamp}.${undo}` }] };
   },
 );
 
@@ -116,9 +117,10 @@ server.tool(
   'Restore all files from a snapshot (additive, does not delete files added since). Current state is backed up first.',
   { timestamp: z.string().describe('Snapshot timestamp to restore') },
   async ({ timestamp }) => {
-    const { restored, skipped } = await engine.restoreSnapshot(timestamp);
+    const { restored, skipped, backupTs } = await engine.restoreSnapshot(timestamp);
     if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${timestamp} not found or contains no files.` }] };
-    let msg = `Restored ${restored} files from snapshot ${timestamp}. Current state was backed up.`;
+    const undo = backupTs ? ` To undo, restore from backup ${backupTs}.` : '';
+    let msg = `Restored ${restored} files from snapshot ${timestamp}.${undo}`;
     if (skipped.length > 0) {
       const shown = skipped.slice(0, 10);
       const extra = skipped.length > 10 ? ` and ${skipped.length - 10} more` : '';
@@ -135,7 +137,8 @@ server.tool(
   async ({ timestamp }) => {
     const result = await engine.restoreCheckpointExact(timestamp);
     if (!result) return { content: [{ type: 'text', text: `Failed: ${timestamp} is not a manual checkpoint or does not exist.` }] };
-    let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${timestamp}. Current state was backed up.`;
+    const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
+    let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${timestamp}.${undo}`;
     if (result.skipped.length > 0) {
       const shown = result.skipped.slice(0, 10);
       const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
