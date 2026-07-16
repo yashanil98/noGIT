@@ -4,12 +4,20 @@
   "description": "MCP server for noGIT local snapshots, usable by terminal AI agents without VS Code.",
   "license": "MIT",
   "type": "module",
-  "main": "dist/server.js",
-  "bin": {
-    "nogit-mcp": "dist/server.js"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yashanil98/noGIT.git",
+    "directory": "mcp"
   },
+  "keywords": ["mcp", "snapshot", "checkpoint", "undo", "ai-agent", "local-history", "nogit"],
+  "main": "dist/src/server.js",
+  "bin": {
+    "nogit-mcp": "dist/src/server.js"
+  },
+  "files": ["dist/src/"],
   "scripts": {
     "build": "tsc -p .",
+    "prepublishOnly": "npm run build",
     "test": "tsc -p . && node --test dist/test/"
   },
   "dependencies": {

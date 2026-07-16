@@ -28,10 +28,11 @@ noGIT ships an MCP server so terminal agents (Claude Code, etc.) can checkpoint 
 ### Setup
 
 ```bash
-# Build
-cd mcp && npm install && npm run build
+# Register with Claude Code (after npm publish, use npx)
+claude mcp add nogit-mcp -- npx nogit-mcp
 
-# Register with Claude Code
+# Or from a local clone
+cd mcp && npm install && npm run build
 claude mcp add nogit-mcp -- node /path/to/noGIT/mcp/dist/src/server.js
 ```
 
@@ -149,12 +150,16 @@ your-project/
 
 The `.nogit/` folder is auto-gitignored.
 
+## For AI agents (AGENTS.md)
+
+If you drop noGIT into a project, AI agents that read AGENTS.md will automatically know to checkpoint before risky operations and how to roll back. See [AGENTS.md](AGENTS.md) for the full instructions agents receive.
+
 ## Development
 
 ```bash
 npm install && npm run build    # extension
 npm test                        # 128 unit tests
-cd mcp && npm install && npm run build && npm test   # MCP server (19 tests)
+cd mcp && npm install && npm run build && npm test   # MCP server (47 tests)
 ```
 
 ## License

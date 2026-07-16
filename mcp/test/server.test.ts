@@ -4,8 +4,10 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { spawn, ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const SERVER_PATH = path.join(import.meta.dirname, '..', 'src', 'server.js');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SERVER_PATH = path.join(__dirname, '..', 'src', 'server.js');
 
 let tmpDir: string;
 
