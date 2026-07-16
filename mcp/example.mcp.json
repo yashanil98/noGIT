@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nogit": {
+      "command": "npx",
+      "args": ["nogit-mcp", "--watch"]
+    }
+  }
+}

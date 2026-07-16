@@ -108,10 +108,10 @@ const engine = new SnapshotEngine({
   maxFileSizeBytes: parsed.maxFileSizeBytes,
 });
 
-const server = new McpServer({
-  name: 'nogit-mcp',
-  version: VERSION,
-});
+const server = new McpServer(
+  { name: 'nogit-mcp', version: VERSION },
+  { instructions: 'noGIT provides local workspace snapshots. Call nogit_checkpoint before risky operations (bulk edits, refactors, migrations). Call nogit_restore_checkpoint_exact to roll back if something goes wrong. Call nogit_undo to reverse a restore. All tools accept checkpoint labels instead of timestamps.' },
+);
 
 server.tool(
   'nogit_status',
