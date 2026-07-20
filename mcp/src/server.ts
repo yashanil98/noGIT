@@ -82,8 +82,8 @@ function normalizePath(rel: string): string {
   p = p.replace(/^\.\//, '');
   // Normalize path separators and collapse
   p = path.posix.normalize(p);
-  // Reject traversals that escape the workspace
-  if (p.startsWith('../') || p === '..') return '';
+  // Reject traversals that escape the workspace, and '.' (root directory itself)
+  if (p.startsWith('../') || p === '..' || p === '.') return '';
   return p;
 }
 
