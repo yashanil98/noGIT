@@ -253,10 +253,15 @@ class SerialQueue {
 // ============================================================================
 
 const DEFAULT_EXCLUDES = [
+  '**/.git',
   '**/.git/**',
+  '**/.nogit',
   '**/.nogit/**',
+  '**/node_modules',
   '**/node_modules/**',
+  '**/dist',
   '**/dist/**',
+  '**/out',
   '**/out/**',
 ];
 
