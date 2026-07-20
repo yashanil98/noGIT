@@ -292,7 +292,8 @@ export class SnapshotEngine {
     this.excludes = opts.excludePatterns ?? DEFAULT_EXCLUDES;
     const rawMax = opts.maxFileSizeBytes;
     this.maxBytes = (typeof rawMax === 'number' && Number.isFinite(rawMax) && rawMax > 0) ? rawMax : 5_000_000;
-    this.maxSnapshots = opts.maxSnapshots ?? 48;
+    const rawSnaps = opts.maxSnapshots;
+    this.maxSnapshots = (typeof rawSnaps === 'number' && Number.isFinite(rawSnaps) && rawSnaps >= 0) ? rawSnaps : 48;
   }
 
   // Monotonic snapshot name: never reissues a name that was used earlier in
