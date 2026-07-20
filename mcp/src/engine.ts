@@ -657,6 +657,11 @@ export class SnapshotEngine {
   async diff(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;
+    // Verify the snapshot exists before diffing. Without this check, a
+    // nonexistent timestamp produces a misleading "file added" diff instead
+    // of returning undefined (snapshot not found).
+    const manifest = await this.readManifest(ts);
+    if (!manifest) return undefined;
     const workspacePath = path.join(this.root, rel);
     if (!isInside(this.root, workspacePath)) return undefined;
     if (!(await isRealPathInside(this.root, workspacePath))) return undefined;

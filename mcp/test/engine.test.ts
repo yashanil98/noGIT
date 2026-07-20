@@ -303,6 +303,13 @@ describe('SnapshotEngine', () => {
     assert.equal(result, undefined);
   });
 
+  it('diff returns undefined for nonexistent snapshot timestamp', async () => {
+    await writeFile(tmpDir, 'a.txt', 'hello');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const diff = await engine.diff('20260101-120000', 'a.txt');
+    assert.equal(diff, undefined);
+  });
+
   it('diff detects binary files gracefully', async () => {
     const binContent = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x01]);
     await fs.writeFile(path.join(tmpDir, 'img.png'), binContent);
