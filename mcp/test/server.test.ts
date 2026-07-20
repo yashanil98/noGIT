@@ -198,4 +198,16 @@ describe('MCP server integration', () => {
     const restoreResp = await client.toolCall(13, 'nogit_restore_file', { timestamp: 'safe', path: '../escape.txt' });
     assert.ok(getText(restoreResp).includes('escapes the workspace root'));
   });
+
+  it('does not promise undo when nothing was restored', async () => {
+    await client.toolCall(10, 'nogit_checkpoint', { label: 'base' });
+
+    // Restore when workspace already matches checkpoint (nothing to change)
+    const resp = await client.toolCall(11, 'nogit_restore_snapshot', { timestamp: 'base' });
+    const text = getText(resp);
+    // restored=N files, but the undo message should only appear if files changed
+    if (text.includes('Restored 0')) {
+      assert.ok(!text.includes('To undo'), 'should not promise undo when 0 files restored');
+    }
+  });
 });

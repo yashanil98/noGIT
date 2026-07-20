@@ -208,7 +208,7 @@ server.tool(
     if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
     const { restored, skipped, backupTs } = await engine.restoreSnapshot(ts);
     if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${ts} not found or contains no files.` }] };
-    const undo = backupTs ? ` To undo, restore from backup ${backupTs}.` : '';
+    const undo = (restored > 0 && backupTs) ? ` To undo, restore from backup ${backupTs}.` : '';
     let msg = `Restored ${restored} files from snapshot ${ts}.${undo}`;
     if (skipped.length > 0) {
       const shown = skipped.slice(0, 10);
@@ -228,7 +228,7 @@ server.tool(
     if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const result = await engine.restoreCheckpointExact(ts);
     if (!result) return { content: [{ type: 'text', text: `Failed: ${ts} is not a manual checkpoint or does not exist.` }] };
-    const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
+    const undo = ((result.restored > 0 || result.deleted > 0) && result.backupTs) ? ` To undo, restore from backup ${result.backupTs}.` : '';
     let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${ts}.${undo}`;
     if (result.skipped.length > 0) {
       const shown = result.skipped.slice(0, 10);
