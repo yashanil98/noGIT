@@ -303,6 +303,18 @@ describe('SnapshotEngine', () => {
     assert.equal(result, undefined);
   });
 
+  it('diffSummary marks unresolvable files as modified', async () => {
+    await writeFile(tmpDir, 'a.txt', 'hello');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    // Delete the snapshot copy to simulate corruption
+    await fs.rm(path.join(tmpDir, '.nogit', 'snapshots', ts, 'a.txt'));
+    const summary = await engine.diffSummary(ts);
+    assert.ok(summary);
+    assert.ok(summary.modified.includes('a.txt'));
+  });
+
   it('diff returns undefined for nonexistent snapshot timestamp', async () => {
     await writeFile(tmpDir, 'a.txt', 'hello');
     const engine = new SnapshotEngine({ root: tmpDir });

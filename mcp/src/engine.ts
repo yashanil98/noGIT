@@ -624,7 +624,7 @@ export class SnapshotEngine {
     const common = snap.files.filter(f => currentSet.has(f));
     for (const rel of common) {
       const snapPath = await this.resolveSnapshotPath(ts, rel);
-      if (!snapPath) continue;
+      if (!snapPath) { modified.push(rel); continue; }
       const workspacePath = path.join(this.root, rel);
       try {
         const [snapBuf, curBuf] = await Promise.all([
