@@ -482,13 +482,17 @@ export class SnapshotEngine {
     return findLatestCheckpoint(await this.listSnapshots());
   }
 
-  // Resolve a timestamp or label to a timestamp. If the input already matches
-  // the timestamp format, return it as-is. Otherwise, search for the most
-  // recent checkpoint whose label matches (case-insensitive substring).
+  // Resolve a timestamp or label to a timestamp. If the input matches the
+  // timestamp format AND a snapshot with that timestamp exists, return it.
+  // Otherwise, search for the most recent snapshot whose label matches
+  // (case-insensitive, exact then substring).
   async resolveTimestamp(input: string): Promise<string | undefined> {
-    if (isValidSnapshotName(input)) return input;
     const trimmed = input.trim();
     if (!trimmed) return undefined;
+    if (isValidSnapshotName(trimmed)) {
+      const manifest = await this.readManifest(trimmed);
+      if (manifest) return trimmed;
+    }
     const snapshots = await this.listSnapshots();
     const lower = trimmed.toLowerCase();
     const match = snapshots.find(s => s.label?.toLowerCase() === lower);

@@ -456,10 +456,29 @@ describe('SnapshotEngine', () => {
     assert.ok(ts);
   });
 
-  it('resolveTimestamp returns timestamp as-is when valid format', async () => {
+  it('resolveTimestamp returns existing timestamp as-is', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const resolved = await engine.resolveTimestamp(ts);
+    assert.equal(resolved, ts);
+  });
+
+  it('resolveTimestamp returns undefined for valid-format timestamp that does not exist', async () => {
     const engine = new SnapshotEngine({ root: tmpDir });
     const ts = await engine.resolveTimestamp('20260714-120000');
-    assert.equal(ts, '20260714-120000');
+    assert.equal(ts, undefined);
+  });
+
+  it('resolveTimestamp resolves label that looks like a timestamp', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('20240101-120000');
+    assert.ok(ts);
+    const resolved = await engine.resolveTimestamp('20240101-120000');
+    assert.equal(resolved, ts);
+    assert.notEqual(resolved, '20240101-120000');
   });
 
   it('resolveTimestamp returns undefined for empty or whitespace input', async () => {
