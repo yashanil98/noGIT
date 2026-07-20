@@ -353,7 +353,11 @@ describe('SnapshotEngine', () => {
     await engine.undo();
     const list = await engine.listSnapshots();
     const autoCount = list.filter(s => !s.label || s.auto).length;
-    assert.ok(autoCount <= 2, `auto snapshots ${autoCount} exceeds max 2`);
+    // max + 1: the current undo-target backup is protected from pruning
+    assert.ok(autoCount <= 3, `auto snapshots ${autoCount} exceeds max+1 (3)`);
+    // Verify undo still works (backup was not pruned)
+    const undo = await engine.undo();
+    assert.ok(undo, 'undo should work because backup is protected from pruning');
   });
 
   it('skips files over maxFileSizeBytes', async () => {

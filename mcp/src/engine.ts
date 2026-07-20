@@ -806,6 +806,11 @@ export class SnapshotEngine {
       const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
       const entries: SnapshotEntry[] = [];
       for (const d of dirs) {
+        // Protect the current undo target from pruning
+        if (d === this.lastBackupTs) {
+          entries.push({ name: d, isCheckpoint: true });
+          continue;
+        }
         const protectedEntry = await this.isCheckpoint(root, d);
         entries.push({ name: d, isCheckpoint: protectedEntry });
       }
