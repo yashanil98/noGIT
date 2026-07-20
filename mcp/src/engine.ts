@@ -509,6 +509,7 @@ export class SnapshotEngine {
     }
     const ok = await this.copyInto(src, rel);
     if (ok && backup.ts) this.lastBackupTs = backup.ts;
+    await this.pruneOldSnapshots();
     return { ok, backupTs: backup.ts };
   }
 
@@ -527,6 +528,7 @@ export class SnapshotEngine {
       else skipped.push(rel);
     }
     if (restored > 0 && backup.ts) this.lastBackupTs = backup.ts;
+    await this.pruneOldSnapshots();
     return { restored, skipped, backupTs: backup.ts };
   }
 
@@ -557,6 +559,7 @@ export class SnapshotEngine {
     const deletedRels = toDelete.filter(r => backup.files.has(r));
     await this.removeEmptyDirs(deletedRels);
     if ((restored > 0 || deleted > 0) && backup.ts) this.lastBackupTs = backup.ts;
+    await this.pruneOldSnapshots();
     return { restored, deleted, skipped, backupTs: backup.ts };
   }
 
@@ -577,6 +580,7 @@ export class SnapshotEngine {
       else skipped.push(rel);
     }
     if (restored > 0 && backup.ts) this.lastBackupTs = backup.ts;
+    await this.pruneOldSnapshots();
     return { restored, skipped };
   }
 

@@ -338,6 +338,24 @@ describe('SnapshotEngine', () => {
     assert.ok(diff.includes('+hello'));
   });
 
+  it('prunes backup snapshots created by restore/undo', async () => {
+    await writeFile(tmpDir, 'a.txt', 'v1');
+    const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 2 });
+    // Fill with 2 auto snapshots
+    await engine.snapshotNow();
+    await writeFile(tmpDir, 'a.txt', 'v2');
+    await engine.snapshotNow();
+    // Checkpoint, modify, restore, undo -- each creates a backup
+    await writeFile(tmpDir, 'a.txt', 'orig');
+    await engine.checkpoint('cp');
+    await writeFile(tmpDir, 'a.txt', 'mod');
+    await engine.restoreFile((await engine.latestCheckpoint())!.timestamp, 'a.txt');
+    await engine.undo();
+    const list = await engine.listSnapshots();
+    const autoCount = list.filter(s => !s.label || s.auto).length;
+    assert.ok(autoCount <= 2, `auto snapshots ${autoCount} exceeds max 2`);
+  });
+
   it('skips files over maxFileSizeBytes', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(200));
