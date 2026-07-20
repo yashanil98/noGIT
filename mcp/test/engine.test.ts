@@ -356,16 +356,21 @@ describe('SnapshotEngine', () => {
     assert.equal(result, undefined);
   });
 
-  it('undo cannot be called twice', async () => {
+  it('undo chains: undo-the-undo restores back', async () => {
     await writeFile(tmpDir, 'a.txt', 'v1');
     const engine = new SnapshotEngine({ root: tmpDir });
     const { ts } = await engine.checkpoint('cp');
     assert.ok(ts);
     await writeFile(tmpDir, 'a.txt', 'v2');
     await engine.restoreFile(ts, 'a.txt');
-    await engine.undo();
-    const secondUndo = await engine.undo();
-    assert.equal(secondUndo, undefined);
+    // file is now v1; undo brings it back to v2
+    const first = await engine.undo();
+    assert.ok(first);
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'v2');
+    // undo again brings it back to v1 (undo-the-undo)
+    const second = await engine.undo();
+    assert.ok(second);
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'v1');
   });
 
   it('resolveTimestamp finds checkpoint by label', async () => {

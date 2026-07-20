@@ -564,14 +564,17 @@ export class SnapshotEngine {
     this.lastBackupTs = undefined;
     const snap = await this.readManifest(ts);
     if (!snap) return undefined;
+    const backup = await this.backupBeforeRestore(snap.files);
     let restored = 0;
     const skipped: string[] = [];
     for (const rel of snap.files) {
       const src = await this.resolveSnapshotPath(ts, rel);
       if (!src) { skipped.push(rel); continue; }
+      if (!(await this.canOverwrite(rel, backup.files))) { skipped.push(rel); continue; }
       if (await this.copyInto(src, rel)) restored++;
       else skipped.push(rel);
     }
+    if (restored > 0 && backup.ts) this.lastBackupTs = backup.ts;
     return { restored, skipped };
   }
 
