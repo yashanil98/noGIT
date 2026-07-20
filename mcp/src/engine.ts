@@ -702,6 +702,14 @@ export class SnapshotEngine {
     // Neither exists: nothing to diff
     if (!snapExists && !currentExists) return undefined;
 
+    // One side missing with empty content: report deletion/addition of empty file
+    if (snapExists && !currentExists && snapBuf.length === 0) {
+      return `--- a/${rel} (snapshot ${ts})\n+++ /dev/null\n\nEmpty file was deleted.`;
+    }
+    if (!snapExists && currentExists && currentBuf.length === 0) {
+      return `--- /dev/null\n+++ b/${rel} (current)\n\nEmpty file was created.`;
+    }
+
     if (isBinaryBuffer(snapBuf) || isBinaryBuffer(currentBuf)) {
       const same = snapBuf.equals(currentBuf);
       if (same) return '';
