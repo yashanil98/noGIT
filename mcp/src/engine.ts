@@ -811,6 +811,11 @@ export class SnapshotEngine {
       const dirs = dirEntries.filter(e => e.isDirectory()).map(e => e.name);
       const entries: SnapshotEntry[] = [];
       for (const d of dirs) {
+        if (!isValidSnapshotName(d)) {
+          // Remove directories with invalid names (orphans from interrupted ops)
+          await fs.rm(path.join(root, d), { recursive: true, force: true }).catch(() => {});
+          continue;
+        }
         // Protect the current undo target from pruning
         if (d === this.lastBackupTs) {
           entries.push({ name: d, isCheckpoint: true });
@@ -830,10 +835,10 @@ export class SnapshotEngine {
   private async isCheckpoint(root: string, dir: string): Promise<boolean> {
     try {
       const meta = parseManifest(await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8'));
-      if (!meta) return true;
+      if (!meta) return false;
       return isProtectedCheckpoint(meta);
     } catch {
-      return true;
+      return false;
     }
   }
 
