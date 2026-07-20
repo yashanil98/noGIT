@@ -1009,7 +1009,23 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     return out.join('\n');
   }
 
-  const edits = myersDiff(oldLines, newLines);
+  // When trailing newline status differs, make the last line of each side
+  // compare as different so the LCS does not match them. This produces
+  // the same output as git: the last line shows as changed rather than as
+  // a context line with a no-newline marker.
+  let diffOldLines = oldLines;
+  let diffNewLines = newLines;
+  if (oldEndsWithNewline !== newEndsWithNewline) {
+    diffOldLines = [...oldLines];
+    diffNewLines = [...newLines];
+    if (diffOldLines.length > 0 && !oldEndsWithNewline) {
+      diffOldLines[diffOldLines.length - 1] += '\x00NO_NL';
+    }
+    if (diffNewLines.length > 0 && !newEndsWithNewline) {
+      diffNewLines[diffNewLines.length - 1] += '\x00NO_NL';
+    }
+  }
+  const edits = myersDiff(diffOldLines, diffNewLines);
   const hunks = buildHunks(edits, oldLines, newLines, oldEndsWithNewline, newEndsWithNewline);
 
   const out: string[] = [
