@@ -47,8 +47,8 @@ function parseArgs(): ParsedArgs {
     else if (args[i].startsWith('--root=')) { root = args[i].slice('--root='.length); }
     else if (args[i] === '--exclude' && args[i + 1]) { excludePatterns.push(normalizeExclude(args[i + 1])); i++; }
     else if (args[i].startsWith('--exclude=')) { excludePatterns.push(normalizeExclude(args[i].slice('--exclude='.length))); }
-    else if (args[i] === '--max-file-size' && args[i + 1]) { maxFileSizeBytes = parseInt(args[i + 1], 10); i++; }
-    else if (args[i].startsWith('--max-file-size=')) { maxFileSizeBytes = parseInt(args[i].slice('--max-file-size='.length), 10); }
+    else if (args[i] === '--max-file-size' && args[i + 1]) { const n = parseInt(args[i + 1], 10); if (n > 0) maxFileSizeBytes = n; i++; }
+    else if (args[i].startsWith('--max-file-size=')) { const n = parseInt(args[i].slice('--max-file-size='.length), 10); if (n > 0) maxFileSizeBytes = n; }
     else if (args[i] === '--watch') { watch = true; }
     else if (args[i] === '--burst-min-files' && args[i + 1]) { burstMinFiles = parseInt(args[i + 1], 10) || 10; i++; }
     else if (args[i].startsWith('--burst-min-files=')) { burstMinFiles = parseInt(args[i].slice('--burst-min-files='.length), 10) || 10; }

@@ -290,7 +290,8 @@ export class SnapshotEngine {
     this.root = path.resolve(opts.root);
     this.folderName = opts.snapshotFolderName ?? '.nogit';
     this.excludes = opts.excludePatterns ?? DEFAULT_EXCLUDES;
-    this.maxBytes = opts.maxFileSizeBytes ?? 5_000_000;
+    const rawMax = opts.maxFileSizeBytes;
+    this.maxBytes = (typeof rawMax === 'number' && Number.isFinite(rawMax) && rawMax > 0) ? rawMax : 5_000_000;
     this.maxSnapshots = opts.maxSnapshots ?? 48;
   }
 
