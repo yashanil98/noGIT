@@ -325,6 +325,19 @@ describe('SnapshotEngine', () => {
     assert.equal(diff, '');
   });
 
+  it('diff detects trailing newline changes', async () => {
+    await fs.writeFile(path.join(tmpDir, 'a.txt'), 'hello');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.writeFile(path.join(tmpDir, 'a.txt'), 'hello\n');
+    const diff = await engine.diff(ts, 'a.txt');
+    assert.ok(diff);
+    assert.ok(diff.includes('No newline at end of file'));
+    assert.ok(diff.includes('-hello'));
+    assert.ok(diff.includes('+hello'));
+  });
+
   it('skips files over maxFileSizeBytes', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(200));

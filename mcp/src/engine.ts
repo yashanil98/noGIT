@@ -948,15 +948,34 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     return out.join('\n');
   }
 
+  const oldEndsWithNewline = oldContent.endsWith('\n');
+  const newEndsWithNewline = newContent.endsWith('\n');
   const oldLines = splitLines(oldContent);
   const newLines = splitLines(newContent);
 
-  // If lines are identical after normalization (only trailing newline differs),
-  // treat as no meaningful change.
-  if (oldLines.length === newLines.length && oldLines.every((l, i) => l === newLines[i])) return '';
+  // If lines are identical but trailing newline differs, show the last line
+  // as a change with the standard "No newline at end of file" marker.
+  if (oldLines.length === newLines.length && oldLines.every((l, i) => l === newLines[i])) {
+    if (oldEndsWithNewline === newEndsWithNewline) return '';
+    const lastLine = oldLines[oldLines.length - 1];
+    const n = oldLines.length;
+    const ctxStart = Math.max(0, n - 1 - CONTEXT_LINES);
+    const ctxCount = n - 1 - ctxStart;
+    const out: string[] = [
+      `--- a/${filename} (snapshot ${oldLabel})`,
+      `+++ b/${filename} (current)`,
+      `@@ -${ctxStart + 1},${ctxCount + 1} +${ctxStart + 1},${ctxCount + 1} @@`,
+    ];
+    for (let i = ctxStart; i < n - 1; i++) out.push(` ${oldLines[i]}`);
+    out.push(`-${lastLine}`);
+    if (!oldEndsWithNewline) out.push('\\ No newline at end of file');
+    out.push(`+${lastLine}`);
+    if (!newEndsWithNewline) out.push('\\ No newline at end of file');
+    return out.join('\n');
+  }
 
   const edits = myersDiff(oldLines, newLines);
-  const hunks = buildHunks(edits, oldLines, newLines);
+  const hunks = buildHunks(edits, oldLines, newLines, oldEndsWithNewline, newEndsWithNewline);
 
   const out: string[] = [
     `--- a/${filename} (snapshot ${oldLabel})`,
@@ -1013,7 +1032,7 @@ function myersDiff(oldLines: string[], newLines: string[]): Edit[] {
 }
 
 // Group edits into unified-diff hunks with context lines.
-function buildHunks(edits: Edit[], oldLines: string[], newLines: string[]): string[] {
+function buildHunks(edits: Edit[], oldLines: string[], newLines: string[], oldEndsWithNewline = true, newEndsWithNewline = true): string[] {
   // Find runs of changes separated by more than 2*CONTEXT_LINES of keeps.
   const groups: Edit[][] = [];
   let current: Edit[] = [];
@@ -1057,14 +1076,23 @@ function buildHunks(edits: Edit[], oldLines: string[], newLines: string[]): stri
       switch (e.type) {
         case 'keep':
           lines.push(` ${oldLines[e.oldIdx]}`);
+          if (e.oldIdx === oldLines.length - 1 && !oldEndsWithNewline) {
+            lines.push('\\ No newline at end of file');
+          }
           oldCount++; newCount++;
           break;
         case 'delete':
           lines.push(`-${oldLines[e.oldIdx]}`);
+          if (e.oldIdx === oldLines.length - 1 && !oldEndsWithNewline) {
+            lines.push('\\ No newline at end of file');
+          }
           oldCount++;
           break;
         case 'insert':
           lines.push(`+${newLines[e.newIdx]}`);
+          if (e.newIdx === newLines.length - 1 && !newEndsWithNewline) {
+            lines.push('\\ No newline at end of file');
+          }
           newCount++;
           break;
       }
