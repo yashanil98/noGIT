@@ -396,6 +396,14 @@ describe('SnapshotEngine', () => {
     assert.equal(ts, '20260714-120000');
   });
 
+  it('resolveTimestamp returns undefined for empty or whitespace input', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await engine.checkpoint('anything');
+    assert.equal(await engine.resolveTimestamp(''), undefined);
+    assert.equal(await engine.resolveTimestamp('   '), undefined);
+  });
+
   it('readFile returns file content from a snapshot', async () => {
     await writeFile(tmpDir, 'code.ts', 'const x = 1;');
     const engine = new SnapshotEngine({ root: tmpDir });

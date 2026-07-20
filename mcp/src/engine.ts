@@ -482,8 +482,10 @@ export class SnapshotEngine {
   // recent checkpoint whose label matches (case-insensitive substring).
   async resolveTimestamp(input: string): Promise<string | undefined> {
     if (isValidSnapshotName(input)) return input;
+    const trimmed = input.trim();
+    if (!trimmed) return undefined;
     const snapshots = await this.listSnapshots();
-    const lower = input.toLowerCase();
+    const lower = trimmed.toLowerCase();
     const match = snapshots.find(s => s.label?.toLowerCase() === lower);
     if (match) return match.timestamp;
     const substr = snapshots.find(s => s.label?.toLowerCase().includes(lower));

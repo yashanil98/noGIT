@@ -297,8 +297,10 @@ server.tool(
   'Permanently delete a snapshot or checkpoint from the store. This is irreversible. Accepts a checkpoint label instead of a timestamp.',
   { timestamp: z.string().describe('Snapshot timestamp or checkpoint label to delete') },
   async ({ timestamp }) => {
-    const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot.` }] };
+    const trimmed = timestamp.trim();
+    if (!trimmed) return { content: [{ type: 'text', text: 'Delete requires an explicit timestamp or label. Use nogit_list_snapshots to find the one you want to remove.' }] };
+    const ts = await engine.resolveTimestamp(trimmed);
+    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${trimmed}" to a snapshot. Use nogit_list_snapshots to check available snapshots.` }] };
     const ok = await engine.deleteSnapshot(ts);
     if (!ok) return { content: [{ type: 'text', text: `Delete failed: ${ts} not found or invalid.` }] };
     return { content: [{ type: 'text', text: `Deleted snapshot ${ts}.` }] };
