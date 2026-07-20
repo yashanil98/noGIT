@@ -439,6 +439,29 @@ describe('SnapshotEngine', () => {
     assert.equal(await readFile(tmpDir, 'a.txt'), 'v1');
   });
 
+  it('failed undo preserves lastBackupTs for retry', async () => {
+    await writeFile(tmpDir, 'a.txt', 'v1');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'v2');
+    await engine.restoreFile(ts, 'a.txt');
+    // Replace file with dir so undo cannot overwrite
+    await fs.rm(path.join(tmpDir, 'a.txt'));
+    await fs.mkdir(path.join(tmpDir, 'a.txt'));
+    const failed = await engine.undo();
+    assert.ok(failed);
+    assert.equal(failed.restored, 0);
+    // Fix the obstruction
+    await fs.rm(path.join(tmpDir, 'a.txt'), { recursive: true });
+    await writeFile(tmpDir, 'a.txt', 'v1');
+    // Retry should succeed
+    const retry = await engine.undo();
+    assert.ok(retry);
+    assert.equal(retry.restored, 1);
+    assert.equal(await readFile(tmpDir, 'a.txt'), 'v2');
+  });
+
   it('resolveTimestamp finds checkpoint by label', async () => {
     await writeFile(tmpDir, 'a.txt', 'x');
     const engine = new SnapshotEngine({ root: tmpDir });

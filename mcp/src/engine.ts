@@ -575,7 +575,6 @@ export class SnapshotEngine {
   async undo(): Promise<{ restored: number; skipped: string[] } | undefined> {
     if (!this.lastBackupTs) return undefined;
     const ts = this.lastBackupTs;
-    this.lastBackupTs = undefined;
     const snap = await this.readManifest(ts);
     if (!snap) return undefined;
     const backup = await this.backupBeforeRestore(snap.files);
@@ -588,7 +587,11 @@ export class SnapshotEngine {
       if (await this.copyInto(src, rel)) restored++;
       else skipped.push(rel);
     }
-    if (restored > 0 && backup.ts) this.lastBackupTs = backup.ts;
+    if (restored > 0) {
+      // Undo succeeded: chain to the new backup so undo-the-undo works
+      this.lastBackupTs = backup.ts ?? undefined;
+    }
+    // If restored === 0, leave lastBackupTs unchanged so the user can retry
     await this.pruneOldSnapshots();
     return { restored, skipped };
   }
