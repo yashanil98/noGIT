@@ -841,8 +841,15 @@ export class SnapshotEngine {
           entries.push({ name: d, isCheckpoint: true });
           continue;
         }
-        const protectedEntry = await this.isCheckpoint(root, d);
-        entries.push({ name: d, isCheckpoint: protectedEntry });
+        const meta = await this.readManifestSafe(root, d);
+        if (meta === undefined) {
+          // No manifest: likely an in-flight write from a concurrent operation.
+          // Skip it entirely -- do not prune, do not count toward the cap.
+          // It will be picked up on the next prune pass after the write completes.
+          continue;
+        }
+        // null = corrupt manifest, treat as pruneable non-checkpoint
+        entries.push({ name: d, isCheckpoint: meta !== null && isProtectedCheckpoint(meta) });
       }
       for (const name of selectSnapshotsToPrune(entries, this.maxSnapshots)) {
         await fs.rm(path.join(root, name), { recursive: true, force: true });
@@ -852,15 +859,19 @@ export class SnapshotEngine {
     }
   }
 
-  private async isCheckpoint(root: string, dir: string): Promise<boolean> {
+  private async readManifestSafe(root: string, dir: string): Promise<SnapshotInfo | null | undefined> {
+    // Returns: SnapshotInfo if valid manifest, null if manifest exists but is invalid,
+    // undefined if meta.json does not exist (possible in-flight write).
+    const metaPath = path.join(root, dir, 'meta.json');
     try {
-      const meta = parseManifest(await fs.readFile(path.join(root, dir, 'meta.json'), 'utf8'));
-      if (!meta) return false;
-      return isProtectedCheckpoint(meta);
-    } catch {
-      return false;
+      const raw = await fs.readFile(metaPath, 'utf8');
+      return parseManifest(raw) ?? null;
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      return null;
     }
   }
+
 
   // --- File watcher for auto-burst checkpoints ---
 
