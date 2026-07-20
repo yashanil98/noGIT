@@ -344,6 +344,18 @@ describe('SnapshotEngine', () => {
     assert.equal(diff, '');
   });
 
+  it('diff on empty file does not show /dev/null', async () => {
+    await fs.writeFile(path.join(tmpDir, 'empty.txt'), '');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.writeFile(path.join(tmpDir, 'empty.txt'), 'content');
+    const diff = await engine.diff(ts, 'empty.txt');
+    assert.ok(diff);
+    assert.ok(!diff.includes('/dev/null'), 'empty file should not show /dev/null');
+    assert.ok(diff.includes('--- a/empty.txt'));
+  });
+
   it('diff detects trailing newline changes', async () => {
     await fs.writeFile(path.join(tmpDir, 'a.txt'), 'hello');
     const engine = new SnapshotEngine({ root: tmpDir });

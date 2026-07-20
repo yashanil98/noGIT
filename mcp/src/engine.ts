@@ -669,9 +669,11 @@ export class SnapshotEngine {
     const snapPath = await this.resolveSnapshotPath(ts, rel);
 
     let snapBuf: Buffer;
+    let snapExists = false;
     if (snapPath) {
       try {
         snapBuf = await fs.readFile(snapPath);
+        snapExists = true;
       } catch {
         snapBuf = Buffer.alloc(0);
       }
@@ -680,14 +682,16 @@ export class SnapshotEngine {
     }
 
     let currentBuf: Buffer;
+    let currentExists = false;
     try {
       currentBuf = await fs.readFile(workspacePath);
+      currentExists = true;
     } catch {
       currentBuf = Buffer.alloc(0);
     }
 
-    // Both missing: nothing to diff
-    if (snapBuf.length === 0 && currentBuf.length === 0) return undefined;
+    // Neither exists: nothing to diff
+    if (!snapExists && !currentExists) return undefined;
 
     if (isBinaryBuffer(snapBuf) || isBinaryBuffer(currentBuf)) {
       const same = snapBuf.equals(currentBuf);
@@ -713,7 +717,7 @@ export class SnapshotEngine {
       ].join('\n');
     }
 
-    return unifiedDiff(rel, snapContent, currentContent, ts);
+    return unifiedDiff(rel, snapContent, currentContent, ts, snapExists, currentExists);
   }
 
   private async resolveSnapshotPath(ts: string, relPath: string): Promise<string | undefined> {
@@ -941,11 +945,11 @@ function splitLines(content: string): string[] {
 
 const CONTEXT_LINES = 3;
 
-function unifiedDiff(filename: string, oldContent: string, newContent: string, oldLabel: string): string {
+function unifiedDiff(filename: string, oldContent: string, newContent: string, oldLabel: string, oldExists = true, newExists = true): string {
   if (oldContent === newContent) return '';
 
-  // When the current file is gone (empty buffer), show a full deletion diff.
-  if (newContent === '') {
+  // When the current file is gone, show a full deletion diff.
+  if (!newExists && newContent === '') {
     const oldLines = splitLines(oldContent);
     const out: string[] = [
       `--- a/${filename} (snapshot ${oldLabel})`,
@@ -958,8 +962,8 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     return out.join('\n');
   }
 
-  // When the snapshot version was empty but a file now exists, show full addition.
-  if (oldContent === '') {
+  // When the snapshot version didn't exist but a file now exists, show full addition.
+  if (!oldExists && oldContent === '') {
     const newLines = splitLines(newContent);
     const out: string[] = [
       `--- /dev/null`,
