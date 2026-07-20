@@ -558,6 +558,19 @@ describe('SnapshotEngine', () => {
     assert.ok(files!.includes('app.ts'));
   });
 
+  it('restore preserves snapshot permissions, not current permissions', async () => {
+    const filePath = path.join(tmpDir, 'script.sh');
+    await fs.writeFile(filePath, '#!/bin/bash\necho hi');
+    await fs.chmod(filePath, 0o755);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.chmod(filePath, 0o444);
+    await engine.restoreFile(ts, 'script.sh');
+    const mode = (await fs.stat(filePath)).mode & 0o777;
+    assert.equal(mode, 0o755, `expected 755 but got ${mode.toString(8)}`);
+  });
+
   it('custom maxFileSizeBytes is respected', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(50));

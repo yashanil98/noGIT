@@ -783,10 +783,9 @@ export class SnapshotEngine {
         await fs.chmod(dest, existingMode | 0o200);
       }
       await fs.copyFile(src, dest);
-      // Restore original permissions after overwrite
-      if (existingMode !== undefined && !(existingMode & 0o200)) {
-        await fs.chmod(dest, existingMode);
-      }
+      // copyFile preserves the source file's permissions, which is the
+      // snapshot's original mode. Do NOT restore the previous mode here --
+      // the whole point of a restore is to bring back the file as it was.
       return true;
     } catch {
       return false;
