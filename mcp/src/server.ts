@@ -7,13 +7,14 @@ import { SnapshotEngine } from './engine.js';
 
 const VERSION = '0.1.0';
 
-// Auto-prefix bare extension globs (*.ext, *.json) with **/ so they match
-// at any depth. Without this, --exclude *.env only excludes root-level files
-// which is never what the user intends.
+// Auto-prefix bare patterns with **/ so they match at any depth.
+// Without this, --exclude .env only excludes the root-level file, and
+// --exclude *.pyc only excludes root-level .pyc files -- never what
+// the user intends. Patterns that already contain a / or start with
+// **/ are left as-is (the user specified a path-aware pattern).
 function normalizeExclude(pattern: string): string {
   if (pattern.startsWith('**/') || pattern.includes('/')) return pattern;
-  if (pattern.startsWith('*.')) return `**/${pattern}`;
-  return pattern;
+  return `**/${pattern}`;
 }
 
 interface ParsedArgs {

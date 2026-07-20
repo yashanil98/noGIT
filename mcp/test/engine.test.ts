@@ -448,6 +448,21 @@ describe('SnapshotEngine', () => {
     assert.ok(!files!.includes('logs/app.log'));
   });
 
+  it('bare name excludes match at any depth', async () => {
+    await writeFile(tmpDir, '.env', 'ROOT_SECRET=x');
+    await writeFile(tmpDir, 'src/.env.local', 'NESTED=y');
+    await writeFile(tmpDir, 'config/.env', 'DEEP=z');
+    await writeFile(tmpDir, 'app.ts', 'code');
+    const engine = new SnapshotEngine({ root: tmpDir, excludePatterns: ['**/.env', '**/.env.local'] });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const files = await engine.getSnapshotFiles(ts);
+    assert.ok(!files!.includes('.env'));
+    assert.ok(!files!.includes('src/.env.local'));
+    assert.ok(!files!.includes('config/.env'));
+    assert.ok(files!.includes('app.ts'));
+  });
+
   it('custom maxFileSizeBytes is respected', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(50));
