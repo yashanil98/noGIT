@@ -66,6 +66,7 @@ const root = path.resolve(parsed.root);
 
 // Normalize paths that agents pass: strip absolute prefix (if within root),
 // remove leading ./ , convert backslashes, collapse double slashes.
+// Returns the empty string for paths that escape the workspace (engine rejects those).
 function normalizePath(rel: string): string {
   let p = rel;
   // Convert Windows backslashes to forward slashes first
@@ -79,7 +80,10 @@ function normalizePath(rel: string): string {
   // Remove leading ./
   p = p.replace(/^\.\//, '');
   // Normalize path separators and collapse
-  return path.posix.normalize(p);
+  p = path.posix.normalize(p);
+  // Reject traversals that escape the workspace
+  if (p.startsWith('../') || p === '..') return '';
+  return p;
 }
 
 // Resolve timestamp-or-label: accepts a raw timestamp or a checkpoint label
@@ -185,6 +189,7 @@ server.tool(
     const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
     const rel = normalizePath(rawRel);
+    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
     const result = await engine.restoreFile(ts, rel);
     if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
     if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
@@ -254,6 +259,7 @@ server.tool(
     const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const rel = normalizePath(rawRel);
+    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
     const diff = await engine.diff(ts, rel);
     if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${ts} or in the current workspace.` }] };
     if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${ts}.` }] };
@@ -328,6 +334,7 @@ server.tool(
     const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const rel = normalizePath(rawRel);
+    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
     const content = await engine.readFile(ts, rel);
     if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
     const MAX_READ_BYTES = 100_000;

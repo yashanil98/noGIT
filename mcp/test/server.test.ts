@@ -185,4 +185,17 @@ describe('MCP server integration', () => {
     const resp = await client.toolCall(12, 'nogit_latest_checkpoint');
     assert.ok(getText(resp).includes('[second]'));
   });
+
+  it('rejects path traversal with clear error', async () => {
+    await client.toolCall(10, 'nogit_checkpoint', { label: 'safe' });
+
+    const diffResp = await client.toolCall(11, 'nogit_diff', { path: '../../../etc/passwd' });
+    assert.ok(getText(diffResp).includes('escapes the workspace root'));
+
+    const readResp = await client.toolCall(12, 'nogit_read_file', { path: '../../secret.txt' });
+    assert.ok(getText(readResp).includes('escapes the workspace root'));
+
+    const restoreResp = await client.toolCall(13, 'nogit_restore_file', { timestamp: 'safe', path: '../escape.txt' });
+    assert.ok(getText(restoreResp).includes('escapes the workspace root'));
+  });
 });
