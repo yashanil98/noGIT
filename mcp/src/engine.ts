@@ -1030,6 +1030,7 @@ function isBinaryBuffer(buf: Buffer): boolean {
 // produces when a file ends with a newline (which is normal for text files).
 // Without this, every file ending in \n would show a phantom empty context line.
 function splitLines(content: string): string[] {
+  if (content === '') return [];
   const lines = content.split('\n');
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
   return lines;
