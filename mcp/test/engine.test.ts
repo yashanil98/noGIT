@@ -600,6 +600,33 @@ describe('SnapshotEngine', () => {
     assert.equal(await readFile(tmpDir, 'a.txt'), 'v1');
   });
 
+  it('serializes concurrent restore/undo without hanging', async () => {
+    await writeFile(tmpDir, 'a.txt', 'v1');
+    await writeFile(tmpDir, 'b.txt', 'v1');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await writeFile(tmpDir, 'a.txt', 'v2');
+    await writeFile(tmpDir, 'b.txt', 'v2');
+    // Fire overlapping restore + restore + undo repeatedly. Without an
+    // operation-level lock, two operations' copyFile read+write on the same
+    // workspace file overlap and stall indefinitely on macOS.
+    for (let round = 0; round < 20; round++) {
+      const ops: Array<Promise<unknown>> = [
+        engine.restoreFile(ts, 'a.txt'),
+        engine.restoreFile(ts, 'b.txt'),
+        engine.undo(),
+      ];
+      const results: PromiseSettledResult<unknown>[] = await Promise.allSettled(ops);
+      for (const r of results) assert.equal(r.status, 'fulfilled');
+      await writeFile(tmpDir, 'a.txt', `r${round}`);
+      await writeFile(tmpDir, 'b.txt', `r${round}`);
+    }
+    // Store remains consistent and the checkpoint survives.
+    const list = await engine.listSnapshots();
+    assert.ok(list.some(s => s.label === 'cp'), 'checkpoint must survive concurrent ops');
+  });
+
   it('failed undo preserves lastBackupTs for retry', async () => {
     await writeFile(tmpDir, 'a.txt', 'v1');
     const engine = new SnapshotEngine({ root: tmpDir });

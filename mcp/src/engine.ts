@@ -298,6 +298,13 @@ export class SnapshotEngine {
   private readonly maxBytes: number;
   private readonly maxSnapshots: number;
   private readonly writeQueue = new SerialQueue();
+  // Serializes whole mutating operations (checkpoint / snapshot / restore /
+  // undo). Without this, two operations' workspace file copies can overlap --
+  // one operation's copyInto writes workspace/f while another's backup reads
+  // workspace/f as a copyFile source, which stalls indefinitely on macOS
+  // (concurrent read+write of the same file via clonefile). Serializing makes
+  // each operation atomic with respect to the others.
+  private readonly opQueue = new SerialQueue();
   private lastIssuedBase = '';
   private lastIssuedSuffix = 0;
   private lastBackupTs: string | undefined;
@@ -468,7 +475,11 @@ export class SnapshotEngine {
     return { ts, files: copied };
   }
 
-  async checkpoint(label: string): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
+  checkpoint(label: string): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
+    return this.opQueue.run(() => this.checkpointImpl(label));
+  }
+
+  private async checkpointImpl(label: string): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
     let trimmed = typeof label === 'string' ? label.trim() : '';
     if (!trimmed) return { ts: undefined, fileCount: 0, totalFiles: 0 };
     // Cap the label so an accidentally huge value (e.g. pasted file contents)
@@ -487,7 +498,11 @@ export class SnapshotEngine {
     return { ts, fileCount: files.length, totalFiles: rels.length };
   }
 
-  async snapshotNow(): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
+  snapshotNow(): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
+    return this.opQueue.run(() => this.snapshotNowImpl());
+  }
+
+  private async snapshotNowImpl(): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
     const rels = await this.listWorkspaceFiles();
     const { ts, files } = await this.writeSnapshot(rels);
     await this.pruneOldSnapshots();
@@ -543,7 +558,11 @@ export class SnapshotEngine {
     return autoSubstr?.timestamp;
   }
 
-  async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
+  restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
+    return this.opQueue.run(() => this.restoreFileImpl(ts, rel));
+  }
+
+  private async restoreFileImpl(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
     if (!isValidSnapshotName(ts)) return { ok: false };
     if (typeof rel !== 'string') return { ok: false };
     if (this.shouldExclude(rel)) return { ok: false };
@@ -571,7 +590,11 @@ export class SnapshotEngine {
     return { ok, backupTs: backup.ts };
   }
 
-  async restoreSnapshot(ts: string): Promise<{ restored: number; skipped: string[]; backupTs?: string }> {
+  restoreSnapshot(ts: string): Promise<{ restored: number; skipped: string[]; backupTs?: string }> {
+    return this.opQueue.run(() => this.restoreSnapshotImpl(ts));
+  }
+
+  private async restoreSnapshotImpl(ts: string): Promise<{ restored: number; skipped: string[]; backupTs?: string }> {
     if (!isValidSnapshotName(ts)) return { restored: 0, skipped: [] };
     const snap = await this.readManifest(ts);
     if (!snap) return { restored: 0, skipped: [] };
@@ -591,7 +614,11 @@ export class SnapshotEngine {
     return { restored, skipped, backupTs: backup.ts };
   }
 
-  async restoreCheckpointExact(ts: string): Promise<{ restored: number; deleted: number; skipped: string[]; backupTs?: string } | undefined> {
+  restoreCheckpointExact(ts: string): Promise<{ restored: number; deleted: number; skipped: string[]; backupTs?: string } | undefined> {
+    return this.opQueue.run(() => this.restoreCheckpointExactImpl(ts));
+  }
+
+  private async restoreCheckpointExactImpl(ts: string): Promise<{ restored: number; deleted: number; skipped: string[]; backupTs?: string } | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     const snap = await this.readManifest(ts);
     if (!snap || !isProtectedCheckpoint(snap)) return undefined;
@@ -627,7 +654,11 @@ export class SnapshotEngine {
     return { restored, deleted, skipped, backupTs: backup.ts };
   }
 
-  async undo(): Promise<{ restored: number; skipped: string[] } | undefined> {
+  undo(): Promise<{ restored: number; skipped: string[] } | undefined> {
+    return this.opQueue.run(() => this.undoImpl());
+  }
+
+  private async undoImpl(): Promise<{ restored: number; skipped: string[] } | undefined> {
     if (!this.lastBackupTs) return undefined;
     const ts = this.lastBackupTs;
     const snap = await this.readManifest(ts);
@@ -1117,9 +1148,13 @@ export class SnapshotEngine {
       for (const rel of files) this.watchModified.add(rel);
       return;
     }
+    // Run the write+prune as one operation on the shared queue so an
+    // auto-burst never overlaps a concurrent restore's workspace file copies.
     const label = `auto: ${files.length} files changed`;
-    await this.writeSnapshot(files, label, true);
-    await this.pruneOldSnapshots();
+    await this.opQueue.run(async () => {
+      await this.writeSnapshot(files, label, true);
+      await this.pruneOldSnapshots();
+    });
   }
 }
 
