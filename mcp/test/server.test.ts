@@ -218,6 +218,42 @@ describe('MCP server integration', () => {
     assert.ok(getText(restoreResp).includes('escapes the workspace root'));
   });
 
+  it('rejects an out-of-workspace absolute path instead of passing a bad rel', async () => {
+    // An absolute path that resolves outside the workspace root must be rejected,
+    // not passed through as a leading-slash rel like "/etc/hostname" or "/app.ts"
+    // (the latter would coincidentally name a workspace file and leak into the
+    // diff header as "a//app.ts"). The engine's realpath guard blocks the read
+    // regardless, but the server must report the clear escape error.
+    await client.toolCall(10, 'nogit_checkpoint', { label: 'safe' });
+
+    const readResp = await client.toolCall(11, 'nogit_read_file', { timestamp: 'safe', path: '/etc/hostname' });
+    assert.ok(getText(readResp).includes('escapes the workspace root'),
+      `expected escape error, got: ${getText(readResp)}`);
+
+    const diffResp = await client.toolCall(12, 'nogit_diff', { timestamp: 'safe', path: '/app.ts' });
+    const diffText = getText(diffResp);
+    assert.ok(diffText.includes('escapes the workspace root'),
+      `expected escape error, got: ${diffText}`);
+    assert.ok(!diffText.includes('a//app.ts'), 'must not emit a malformed double-slash rel');
+
+    // A path that resolves outside via /.. must also be rejected.
+    const escResp = await client.toolCall(13, 'nogit_read_file', { timestamp: 'safe', path: '/../etc/hostname' });
+    assert.ok(getText(escResp).includes('escapes the workspace root'));
+  });
+
+  it('accepts an absolute path that is inside the workspace', async () => {
+    // The absolute-inside-workspace case must keep working: it is rewritten to a
+    // clean workspace-relative path, not rejected by the escape guard.
+    await client.toolCall(10, 'nogit_checkpoint', { label: 'cp' });
+    await fs.writeFile(path.join(tmpDir, 'app.ts'), 'const x = 2;\n');
+    const absInside = path.join(tmpDir, 'app.ts');
+    const diffResp = await client.toolCall(11, 'nogit_diff', { timestamp: 'cp', path: absInside });
+    const text = getText(diffResp);
+    assert.ok(text.includes('--- a/app.ts'), `expected clean a/app.ts header, got: ${text.split('\n')[0]}`);
+    assert.ok(text.includes('-const x = 1;'));
+    assert.ok(text.includes('+const x = 2;'));
+  });
+
   it('does not promise undo when nothing was restored', async () => {
     await client.toolCall(10, 'nogit_checkpoint', { label: 'base' });
 

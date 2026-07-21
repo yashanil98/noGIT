@@ -85,6 +85,15 @@ function normalizePath(rel: string): string {
   p = path.posix.normalize(p);
   // Reject traversals that escape the workspace, and '.' (root directory itself)
   if (p.startsWith('../') || p === '..' || p === '.') return '';
+  // Reject a path that is still absolute here: an in-workspace absolute path was
+  // already rewritten to a relative one by the isAbsolute block above, so a
+  // leading slash now means an absolute path that resolved OUTSIDE the workspace
+  // (e.g. "/etc/passwd", or "/a.txt" that only coincidentally names a workspace
+  // file). Returning it verbatim violated this function's escape-to-"" contract
+  // and produced malformed rels like "/a.txt" that leaked into diff headers as
+  // "a//a.txt". The engine's realpath guard already blocked reads, but the rel
+  // itself must be rejected here.
+  if (p.startsWith('/')) return '';
   return p;
 }
 
