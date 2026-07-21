@@ -475,11 +475,8 @@ export class SnapshotEngine {
       return [];
     }
     const metas = await Promise.all(dirs.map(async d => {
-      try {
-        return parseManifest(await fs.readFile(path.join(root, d, 'meta.json'), 'utf8'));
-      } catch {
-        return undefined;
-      }
+      const buf = await this.readRegularFile(path.join(root, d, 'meta.json'));
+      return buf ? parseManifest(buf.toString('utf8')) : undefined;
     }));
     return metas.filter((m): m is SnapshotInfo => m !== undefined);
   }
@@ -772,11 +769,8 @@ export class SnapshotEngine {
   private async readManifest(ts: string): Promise<SnapshotInfo | undefined> {
     const snapRoot = this.snapshotsRootPath();
     const metaPath = path.join(snapRoot, ts, 'meta.json');
-    try {
-      return parseManifest(await fs.readFile(metaPath, 'utf8'));
-    } catch {
-      return undefined;
-    }
+    const buf = await this.readRegularFile(metaPath);
+    return buf ? parseManifest(buf.toString('utf8')) : undefined;
   }
 
   private async backupBeforeRestore(rels: string[]): Promise<{ ts: string | undefined; files: Set<string> }> {
@@ -938,15 +932,14 @@ export class SnapshotEngine {
 
   private async readManifestSafe(root: string, dir: string): Promise<SnapshotInfo | null | undefined> {
     // Returns: SnapshotInfo if valid manifest, null if manifest exists but is invalid,
-    // undefined if meta.json does not exist (possible in-flight write).
+    // undefined if meta.json does not exist or is not a regular file.
     const metaPath = path.join(root, dir, 'meta.json');
-    try {
-      const raw = await fs.readFile(metaPath, 'utf8');
-      return parseManifest(raw) ?? null;
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      return null;
+    const buf = await this.readRegularFile(metaPath);
+    if (!buf) {
+      // Distinguish ENOENT (in-flight write) from other failures
+      try { await fs.lstat(metaPath); return null; } catch { return undefined; }
     }
+    return parseManifest(buf.toString('utf8')) ?? null;
   }
 
 
