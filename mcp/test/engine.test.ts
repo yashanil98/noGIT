@@ -173,6 +173,50 @@ describe('SnapshotEngine', () => {
     assert.equal(fileCount, 1);
   });
 
+  it('diff rejects paths inside the .nogit store', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    // Attempting to diff a store-internal file must not leak its contents
+    const diff = await engine.diff(ts, `.nogit/snapshots/${ts}/meta.json`);
+    assert.equal(diff, undefined);
+  });
+
+  it('diff rejects paths inside excluded directories', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    await writeFile(tmpDir, 'node_modules/pkg/x.js', 'module');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    assert.equal(await engine.diff(ts, 'node_modules/pkg/x.js'), undefined);
+  });
+
+  it('restore cannot write into the store via a tampered manifest', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('real');
+    assert.ok(ts);
+    // Craft a malicious snapshot whose manifest lists a store path
+    const evilDir = path.join(tmpDir, '.nogit', 'snapshots', '20260101-120000');
+    await fs.mkdir(path.join(evilDir, '.nogit', 'snapshots', ts), { recursive: true });
+    await fs.writeFile(
+      path.join(evilDir, '.nogit', 'snapshots', ts, 'meta.json'),
+      JSON.stringify({ timestamp: ts, files: [], label: 'CORRUPTED' }),
+    );
+    await fs.writeFile(path.join(evilDir, 'meta.json'), JSON.stringify({
+      timestamp: '20260101-120000',
+      files: [`.nogit/snapshots/${ts}/meta.json`],
+      label: 'evil',
+    }));
+    const r = await engine.restoreSnapshot('20260101-120000');
+    // The store path must be skipped, not written
+    assert.ok(r.skipped.includes(`.nogit/snapshots/${ts}/meta.json`));
+    // The real checkpoint manifest must be intact
+    const realMeta = JSON.parse(await readFile(tmpDir, `.nogit/snapshots/${ts}/meta.json`));
+    assert.equal(realMeta.label, 'real');
+  });
+
   it('manifest written by engine is parseable by the extension format', async () => {
     await writeFile(tmpDir, 'src/app.ts', 'const x = 1;');
     const engine = new SnapshotEngine({ root: tmpDir });
