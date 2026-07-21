@@ -359,15 +359,16 @@ server.tool(
     if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
     const content = await engine.readFile(ts, rel);
     if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
-    const MAX_READ_BYTES = 100_000;
-    if (content.length > MAX_READ_BYTES) {
-      let truncated = content.slice(0, MAX_READ_BYTES);
+    const MAX_READ_CHARS = 100_000;
+    if (content.length > MAX_READ_CHARS) {
+      let truncated = content.slice(0, MAX_READ_CHARS);
       // Avoid splitting a surrogate pair at the boundary
       const lastCode = truncated.charCodeAt(truncated.length - 1);
       if (lastCode >= 0xD800 && lastCode <= 0xDBFF) truncated = truncated.slice(0, -1);
       const totalLines = content.split('\n').length;
       const shownLines = truncated.split('\n').length;
-      return { content: [{ type: 'text', text: `${truncated}\n\n--- Truncated: showing ${shownLines} of ${totalLines} lines (${content.length} bytes total). Use nogit_restore_file to get the full file on disk.` }] };
+      const byteSize = Buffer.byteLength(content, 'utf8');
+      return { content: [{ type: 'text', text: `${truncated}\n\n--- Truncated: showing ${shownLines} of ${totalLines} lines (${byteSize} bytes total). Use nogit_restore_file to get the full file on disk.` }] };
     }
     return { content: [{ type: 'text', text: content }] };
   },
