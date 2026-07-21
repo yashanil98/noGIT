@@ -137,7 +137,9 @@ function parseManifest(raw: string): SnapshotInfo | undefined {
   if (!Array.isArray(obj.files) || !obj.files.every(f => typeof f === 'string')) return undefined;
   if (obj.label !== undefined && typeof obj.label !== 'string') return undefined;
   if (obj.auto !== undefined && typeof obj.auto !== 'boolean') return undefined;
-  const result: SnapshotInfo = { timestamp: obj.timestamp, files: obj.files as string[] };
+  // Normalize backslashes to forward slashes (handles manifests from Windows)
+  const files = (obj.files as string[]).map(f => f.replace(/\\/g, '/'));
+  const result: SnapshotInfo = { timestamp: obj.timestamp, files };
   if (typeof obj.label === 'string') result.label = obj.label;
   if (obj.auto === true) result.auto = true;
   return result;
