@@ -645,15 +645,11 @@ export class SnapshotEngine {
       const snapPath = await this.resolveSnapshotPath(ts, rel);
       if (!snapPath) { modified.push(rel); continue; }
       const workspacePath = path.join(this.root, rel);
-      try {
-        const [snapBuf, curBuf] = await Promise.all([
-          fs.readFile(snapPath),
-          fs.readFile(workspacePath),
-        ]);
-        if (!snapBuf.equals(curBuf)) modified.push(rel);
-      } catch {
-        modified.push(rel);
-      }
+      const [snapBuf, curBuf] = await Promise.all([
+        this.readRegularFile(snapPath),
+        this.readRegularFile(workspacePath),
+      ]);
+      if (!snapBuf || !curBuf || !snapBuf.equals(curBuf)) modified.push(rel);
     }
 
     return { modified, added, deleted };
