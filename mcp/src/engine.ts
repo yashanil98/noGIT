@@ -473,8 +473,14 @@ export class SnapshotEngine {
     if (!trimmed) return { ts: undefined, fileCount: 0, totalFiles: 0 };
     // Cap the label so an accidentally huge value (e.g. pasted file contents)
     // cannot permanently bloat every manifest and slow listSnapshots /
-    // resolveTimestamp, which read and search labels on every call.
-    if (trimmed.length > MAX_LABEL_LENGTH) trimmed = trimmed.slice(0, MAX_LABEL_LENGTH);
+    // resolveTimestamp, which read and search labels on every call. Truncate
+    // without splitting a surrogate pair, which would leave a lone surrogate
+    // that corrupts the label on disk and can break JSON serialization.
+    if (trimmed.length > MAX_LABEL_LENGTH) {
+      trimmed = trimmed.slice(0, MAX_LABEL_LENGTH);
+      const last = trimmed.charCodeAt(trimmed.length - 1);
+      if (last >= 0xD800 && last <= 0xDBFF) trimmed = trimmed.slice(0, -1);
+    }
     const rels = await this.listWorkspaceFiles();
     const { ts, files } = await this.writeSnapshot(rels, trimmed);
     await this.pruneOldSnapshots();

@@ -266,6 +266,21 @@ describe('SnapshotEngine', () => {
     assert.ok(snap!.label!.length <= 1000, `label length ${snap!.label!.length} should be capped at 1000`);
   });
 
+  it('capping a label does not split a surrogate pair', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    // Position 1000 lands on the high surrogate of the emoji (999 + 2-unit char)
+    const label = 'a'.repeat(999) + '\u{1F600}' + 'tail';
+    const { ts } = await engine.checkpoint(label);
+    assert.ok(ts);
+    const snap = (await engine.listSnapshots()).find(s => s.timestamp === ts);
+    assert.ok(snap);
+    const stored = snap!.label!;
+    const last = stored.charCodeAt(stored.length - 1);
+    assert.ok(!(last >= 0xD800 && last <= 0xDBFF), 'label must not end with a lone high surrogate');
+    assert.ok(!stored.includes('�'), 'label must not contain a replacement char from a split surrogate');
+  });
+
   it('pruning respects maxSnapshots', async () => {
     await writeFile(tmpDir, 'a.txt', 'x');
     const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 2 });
