@@ -638,13 +638,14 @@ export class SnapshotEngine {
 
     const currentFiles = await this.listWorkspaceFiles();
     const currentSet = new Set(currentFiles);
-    const snapSet = new Set(snap.files);
+    const snapFiles = [...new Set(snap.files)];
+    const snapSet = new Set(snapFiles);
 
-    const deleted = snap.files.filter(f => !currentSet.has(f));
+    const deleted = snapFiles.filter(f => !currentSet.has(f));
     const added = currentFiles.filter(f => !snapSet.has(f));
 
     const modified: string[] = [];
-    const common = snap.files.filter(f => currentSet.has(f));
+    const common = snapFiles.filter(f => currentSet.has(f));
     for (const rel of common) {
       const snapPath = await this.resolveSnapshotPath(ts, rel);
       if (!snapPath) { modified.push(rel); continue; }
