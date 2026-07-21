@@ -137,9 +137,15 @@ function parseManifest(raw: string): SnapshotInfo | undefined {
   if (!Array.isArray(obj.files) || !obj.files.every(f => typeof f === 'string')) return undefined;
   if (obj.label !== undefined && typeof obj.label !== 'string') return undefined;
   if (obj.auto !== undefined && typeof obj.auto !== 'boolean') return undefined;
-  // Normalize backslashes to forward slashes (handles manifests from Windows)
-  // and deduplicate so every consumer sees a consistent unique file list.
-  const files = [...new Set((obj.files as string[]).map(f => f.replace(/\\/g, '/')))];
+  // Deduplicate so every consumer sees a consistent unique file list. Do NOT
+  // rewrite backslashes: the extension and this engine both convert path.sep to
+  // a posix '/' via toWorkspaceRel before writing, so a '\' in a stored path is
+  // a literal filename character (legal on macOS/Linux), not a separator.
+  // Rewriting it would break the manifest path's link to the file on disk --
+  // diffSummary would report a phantom add+delete and restoreSnapshot would
+  // fail to recover the file. This matches the extension's parseManifest, which
+  // stores obj.files verbatim.
+  const files = [...new Set(obj.files as string[])];
   const result: SnapshotInfo = { timestamp: obj.timestamp, files };
   if (typeof obj.label === 'string') result.label = obj.label;
   if (obj.auto === true) result.auto = true;

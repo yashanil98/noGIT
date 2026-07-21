@@ -294,6 +294,35 @@ describe('SnapshotEngine', () => {
     assert.equal(/^\d{8}-\d{6}(?:-\d+)?$/.test(parsed.timestamp), true);
   });
 
+  it('preserves a literal backslash in a filename through snapshot and restore', async () => {
+    // On macOS/Linux a backslash is a legal filename character. The engine and
+    // the extension both convert path.sep to a posix "/" before writing the
+    // manifest, so a "\\" stored in a manifest path is a literal filename
+    // character, not a separator. parseManifest must not rewrite it: doing so
+    // detaches the manifest entry from the file on disk, causing diffSummary to
+    // report a phantom add+delete and restoreSnapshot to lose the file.
+    const weird = 'a\\b.txt'; // filename: a<backslash>b.txt (no directory)
+    await fs.writeFile(path.join(tmpDir, weird), 'backslash-content');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+
+    // Manifest records the name verbatim (backslash preserved).
+    const files = await engine.getSnapshotFiles(ts);
+    assert.deepEqual(files, [weird]);
+
+    // An unchanged workspace shows no phantom differences.
+    const summary = await engine.diffSummary(ts);
+    assert.deepEqual(summary, { modified: [], added: [], deleted: [] });
+
+    // Deleting then restoring the snapshot recovers the file exactly.
+    await fs.rm(path.join(tmpDir, weird));
+    const r = await engine.restoreSnapshot(ts);
+    assert.equal(r.restored, 1);
+    assert.deepEqual(r.skipped, []);
+    assert.equal(await readFile(tmpDir, weird), 'backslash-content');
+  });
+
   it('rejects path traversal in restoreFile', async () => {
     await writeFile(tmpDir, 'a.txt', 'safe');
     const engine = new SnapshotEngine({ root: tmpDir });
