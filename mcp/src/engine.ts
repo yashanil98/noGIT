@@ -704,6 +704,9 @@ export class SnapshotEngine {
     let currentBuf: Buffer;
     let currentExists = false;
     try {
+      // lstat first: readFile on a FIFO/socket blocks forever
+      const st = await fs.lstat(workspacePath);
+      if (!st.isFile()) throw new Error('not a regular file');
       currentBuf = await fs.readFile(workspacePath);
       currentExists = true;
     } catch {
