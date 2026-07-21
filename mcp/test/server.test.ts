@@ -105,6 +105,25 @@ describe('MCP server integration', () => {
     assert.ok(text.includes('Snapshots: 0'));
   });
 
+  it('nogit_status counts plain snapshots as snapshots, not auto', async () => {
+    // A plain snapshot_now snapshot has no label and is not auto. It must not be
+    // reported as "auto" in the status, which would contradict list_snapshots
+    // (where only auto:true snapshots carry the "(auto)" tag).
+    await client.toolCall(10, 'nogit_checkpoint', { label: 'cp' });
+    await fs.writeFile(path.join(tmpDir, 'app.ts'), 'const x = 2;\n');
+    await client.toolCall(11, 'nogit_snapshot_now');
+
+    const status = getText(await client.toolCall(12, 'nogit_status'));
+    // One manual checkpoint, zero auto-burst, one plain snapshot.
+    assert.ok(status.includes('1 checkpoints'), `expected 1 checkpoints, got: ${status}`);
+    assert.ok(status.includes('0 auto'), `expected 0 auto (no burst snapshots), got: ${status}`);
+    assert.ok(status.includes('1 snapshots'), `expected 1 plain snapshot, got: ${status}`);
+
+    // Cross-check: list_snapshots must show no "(auto)" tag for these.
+    const list = getText(await client.toolCall(13, 'nogit_list_snapshots'));
+    assert.ok(!list.includes('(auto)'), `list must not tag plain snapshots as auto, got: ${list}`);
+  });
+
   it('nogit_checkpoint and nogit_list_snapshots round-trip', async () => {
     const cp = await client.toolCall(10, 'nogit_checkpoint', { label: 'test' });
     assert.ok(getText(cp).includes('2 files'));

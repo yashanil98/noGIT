@@ -162,9 +162,16 @@ server.tool(
   'Show the noGIT workspace status: root path, snapshot count, and most recently created checkpoint. Note: this shows when the checkpoint was taken, not which state the workspace is currently at. Use nogit_diff_summary to compare the workspace against any checkpoint.',
   async () => {
     const snapshots = await engine.listSnapshots();
+    // Three snapshot kinds exist: protected checkpoints (label set, not auto),
+    // auto-burst snapshots (label set, auto:true), and plain snapshots from
+    // snapshot_now / pre-restore backups (no label). Report each honestly rather
+    // than lumping plain snapshots under "auto" -- which contradicted
+    // nogit_list_snapshots, where only auto:true snapshots carry the (auto) tag.
     const manualCount = snapshots.filter(s => s.label && !s.auto).length;
+    const autoCount = snapshots.filter(s => s.auto).length;
+    const plainCount = snapshots.length - manualCount - autoCount;
     const cp = await engine.latestCheckpoint();
-    const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length} (${manualCount} checkpoints, ${snapshots.length - manualCount} auto)`];
+    const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length} (${manualCount} checkpoints, ${autoCount} auto, ${plainCount} snapshots)`];
     if (cp) lines.push(`Most recent checkpoint: ${cp.timestamp} [${sanitizeForLine(cp.label!)}] - ${cp.files.length} files`);
     else lines.push('No checkpoints yet.');
     return { content: [{ type: 'text', text: lines.join('\n') }] };
