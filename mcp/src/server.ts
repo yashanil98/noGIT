@@ -113,6 +113,10 @@ const engine = new SnapshotEngine({
   maxFileSizeBytes: parsed.maxFileSizeBytes,
 });
 
+function sanitizeLabel(label: string): string {
+  return label.replace(/[\n\r\t]/g, ' ');
+}
+
 function errorResult(err: unknown): { content: Array<{ type: 'text'; text: string }> } {
   const msg = err instanceof Error ? err.message : String(err);
   return { content: [{ type: 'text', text: `Internal error: ${msg}` }] };
@@ -131,7 +135,7 @@ server.tool(
     const manualCount = snapshots.filter(s => s.label && !s.auto).length;
     const cp = await engine.latestCheckpoint();
     const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length} (${manualCount} checkpoints, ${snapshots.length - manualCount} auto)`];
-    if (cp) lines.push(`Most recent checkpoint: ${cp.timestamp} [${cp.label}] - ${cp.files.length} files`);
+    if (cp) lines.push(`Most recent checkpoint: ${cp.timestamp} [${sanitizeLabel(cp.label!)}] - ${cp.files.length} files`);
     else lines.push('No checkpoints yet.');
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   },
@@ -179,7 +183,7 @@ server.tool(
     const MAX_SHOW = 50;
     const shown = snapshots.slice(0, MAX_SHOW);
     const lines = shown.map(s => {
-      const label = s.label ? ` [${s.label}]` : '';
+      const label = s.label ? ` [${sanitizeLabel(s.label)}]` : '';
       const auto = s.auto ? ' (auto)' : '';
       return `${s.timestamp}${label}${auto} - ${s.files.length} files`;
     });
@@ -260,7 +264,7 @@ server.tool(
   async () => {
     const cp = await engine.latestCheckpoint();
     if (!cp) return { content: [{ type: 'text', text: 'No checkpoints found.' }] };
-    return { content: [{ type: 'text', text: `Most recent checkpoint: ${cp.timestamp} [${cp.label}] - ${cp.files.length} files` }] };
+    return { content: [{ type: 'text', text: `Most recent checkpoint: ${cp.timestamp} [${sanitizeLabel(cp.label!)}] - ${cp.files.length} files` }] };
   },
 );
 
