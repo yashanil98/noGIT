@@ -538,10 +538,11 @@ export class SnapshotEngine {
     if (!isValidSnapshotName(ts)) return { restored: 0, skipped: [] };
     const snap = await this.readManifest(ts);
     if (!snap) return { restored: 0, skipped: [] };
-    const backup = await this.backupBeforeRestore(snap.files);
+    const files = [...new Set(snap.files)];
+    const backup = await this.backupBeforeRestore(files);
     let restored = 0;
     const skipped: string[] = [];
-    for (const rel of snap.files) {
+    for (const rel of files) {
       const src = await this.resolveSnapshotPath(ts, rel);
       if (!src) { skipped.push(rel); continue; }
       if (!(await this.canOverwrite(rel, backup.files))) { skipped.push(rel); continue; }
@@ -557,9 +558,10 @@ export class SnapshotEngine {
     if (!isValidSnapshotName(ts)) return undefined;
     const snap = await this.readManifest(ts);
     if (!snap || !isProtectedCheckpoint(snap)) return undefined;
+    const snapFiles = [...new Set(snap.files)];
     const current = await this.listWorkspaceFiles();
-    const toDelete = filesToDeleteForExactRestore(current, snap.files);
-    const backup = await this.backupBeforeRestore([...snap.files, ...toDelete]);
+    const toDelete = filesToDeleteForExactRestore(current, snapFiles);
+    const backup = await this.backupBeforeRestore([...snapFiles, ...toDelete]);
 
     let deleted = 0;
     const skipped: string[] = [];
@@ -573,7 +575,7 @@ export class SnapshotEngine {
     }
 
     let restored = 0;
-    for (const rel of snap.files) {
+    for (const rel of snapFiles) {
       const src = await this.resolveSnapshotPath(ts, rel);
       if (!src) { skipped.push(rel); continue; }
       if (!(await this.canOverwrite(rel, backup.files))) { skipped.push(rel); continue; }
