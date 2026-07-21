@@ -270,6 +270,12 @@ const DEFAULT_EXCLUDES = [
 
 const COPY_CONCURRENCY = 16;
 
+// Cap on checkpoint label length. Labels are stored in every manifest and
+// searched on each listSnapshots / resolveTimestamp call, so an unbounded
+// label would bloat the store and slow every operation. 1000 chars is far
+// beyond any reasonable label.
+const MAX_LABEL_LENGTH = 1000;
+
 export interface EngineOptions {
   root: string;
   snapshotFolderName?: string;
@@ -456,8 +462,12 @@ export class SnapshotEngine {
   }
 
   async checkpoint(label: string): Promise<{ ts: string | undefined; fileCount: number; totalFiles: number }> {
-    const trimmed = typeof label === 'string' ? label.trim() : '';
+    let trimmed = typeof label === 'string' ? label.trim() : '';
     if (!trimmed) return { ts: undefined, fileCount: 0, totalFiles: 0 };
+    // Cap the label so an accidentally huge value (e.g. pasted file contents)
+    // cannot permanently bloat every manifest and slow listSnapshots /
+    // resolveTimestamp, which read and search labels on every call.
+    if (trimmed.length > MAX_LABEL_LENGTH) trimmed = trimmed.slice(0, MAX_LABEL_LENGTH);
     const rels = await this.listWorkspaceFiles();
     const { ts, files } = await this.writeSnapshot(rels, trimmed);
     await this.pruneOldSnapshots();

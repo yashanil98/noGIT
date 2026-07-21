@@ -255,6 +255,17 @@ describe('SnapshotEngine', () => {
     assert.equal(fileCount, 0);
   });
 
+  it('caps an oversized checkpoint label', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('L'.repeat(100000));
+    assert.ok(ts);
+    const list = await engine.listSnapshots();
+    const snap = list.find(s => s.timestamp === ts);
+    assert.ok(snap);
+    assert.ok(snap!.label!.length <= 1000, `label length ${snap!.label!.length} should be capped at 1000`);
+  });
+
   it('pruning respects maxSnapshots', async () => {
     await writeFile(tmpDir, 'a.txt', 'x');
     const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 2 });
