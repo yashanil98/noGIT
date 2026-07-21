@@ -1146,6 +1146,17 @@ function isBinaryBuffer(buf: Buffer): boolean {
 // matching lines, then emits standard unified-diff hunks with 3 lines of
 // context. Acceptable for the file sizes agents typically snapshot.
 
+// Format one side of a hunk header. Per the unified-diff spec (and git), the
+// ",count" part is omitted when count === 1, e.g. "5" rather than "5,1".
+function hunkRange(start: number, count: number): string {
+  return count === 1 ? `${start}` : `${start},${count}`;
+}
+
+// Full hunk header: "@@ -<oldRange> +<newRange> @@".
+function hunkHeader(oldStart: number, oldCount: number, newStart: number, newCount: number): string {
+  return `@@ -${hunkRange(oldStart, oldCount)} +${hunkRange(newStart, newCount)} @@`;
+}
+
 // Split content into lines. Drops the trailing empty element that split('\n')
 // produces when a file ends with a newline (which is normal for text files).
 // Without this, every file ending in \n would show a phantom empty context line.
@@ -1167,7 +1178,7 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     const out: string[] = [
       `--- a/${filename} (snapshot ${oldLabel})`,
       `+++ /dev/null`,
-      `@@ -1,${oldLines.length} +0,0 @@`,
+      hunkHeader(1, oldLines.length, 0, 0),
     ];
     for (const line of oldLines) {
       out.push(`-${line}`);
@@ -1181,7 +1192,7 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     const out: string[] = [
       `--- /dev/null`,
       `+++ b/${filename} (current)`,
-      `@@ -0,0 +1,${newLines.length} @@`,
+      hunkHeader(0, 0, 1, newLines.length),
     ];
     for (const line of newLines) {
       out.push(`+${line}`);
@@ -1205,7 +1216,7 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     const out: string[] = [
       `--- a/${filename} (snapshot ${oldLabel})`,
       `+++ b/${filename} (current)`,
-      `@@ -${ctxStart + 1},${ctxCount + 1} +${ctxStart + 1},${ctxCount + 1} @@`,
+      hunkHeader(ctxStart + 1, ctxCount + 1, ctxStart + 1, ctxCount + 1),
     ];
     for (let i = ctxStart; i < n - 1; i++) out.push(` ${oldLines[i]}`);
     out.push(`-${lastLine}`);
@@ -1378,7 +1389,7 @@ function buildHunks(edits: Edit[], oldLines: string[], newLines: string[], oldEn
     // patch(1) rejects hunks like "-1,0" on an empty file.
     if (oldCount === 0) oldStart = slice[0].oldIdx;
     if (newCount === 0) newStart = slice[0].newIdx;
-    output.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
+    output.push(hunkHeader(oldStart, oldCount, newStart, newCount));
     output.push(...lines);
   }
   return output;

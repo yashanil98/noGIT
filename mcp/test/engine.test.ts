@@ -476,6 +476,28 @@ describe('SnapshotEngine', () => {
     assert.ok(diff.includes('--- a/empty.txt'));
   });
 
+  it('omits the ,1 count in hunk headers like git', async () => {
+    // A single-line file changed -> git writes "@@ -1 +1 @@", not "-1,1 +1,1".
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), 'only\n');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), 'changed\n');
+    const diff = await engine.diff(ts, 'f.txt');
+    assert.ok(diff);
+    assert.ok(diff.includes('@@ -1 +1 @@'), `expected "@@ -1 +1 @@", got:\n${diff}`);
+    assert.ok(!diff.includes('-1,1'), 'must not emit ",1" count');
+
+    // Delete down to one line -> "@@ -1,4 +1 @@" (count omitted only on the 1 side)
+    await fs.writeFile(path.join(tmpDir, 'g.txt'), 'a\nb\nc\nd\n');
+    const { ts: ts2 } = await engine.checkpoint('cp2');
+    assert.ok(ts2);
+    await fs.writeFile(path.join(tmpDir, 'g.txt'), 'b\n');
+    const diff2 = await engine.diff(ts2, 'g.txt');
+    assert.ok(diff2);
+    assert.ok(diff2.includes('@@ -1,4 +1 @@'), `expected "@@ -1,4 +1 @@", got:\n${diff2}`);
+  });
+
   it('diff detects trailing newline changes', async () => {
     await fs.writeFile(path.join(tmpDir, 'a.txt'), 'hello');
     const engine = new SnapshotEngine({ root: tmpDir });
