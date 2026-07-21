@@ -1214,15 +1214,22 @@ interface Edit {
 function myersDiff(oldLines: string[], newLines: string[]): Edit[] {
   const n = oldLines.length;
   const m = newLines.length;
+  const width = m + 1;
 
-  // Build LCS table
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  // LCS table stored as a flat Int32Array (indexed i*width + j) rather than
+  // an array-of-arrays of boxed JS numbers. This cuts the table's memory
+  // footprint several-fold, which matters at the guard boundary where n and
+  // m approach 5000 (a 5000x5000 table). LCS values never exceed min(n,m),
+  // well within Int32 range.
+  const dp = new Int32Array((n + 1) * width);
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
       if (oldLines[i] === newLines[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
+        dp[i * width + j] = dp[(i + 1) * width + (j + 1)] + 1;
       } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        const down = dp[(i + 1) * width + j];
+        const right = dp[i * width + (j + 1)];
+        dp[i * width + j] = down > right ? down : right;
       }
     }
   }
@@ -1235,7 +1242,7 @@ function myersDiff(oldLines: string[], newLines: string[]): Edit[] {
     if (i < n && j < m && oldLines[i] === newLines[j]) {
       edits.push({ type: 'keep', oldIdx: i, newIdx: j });
       i++; j++;
-    } else if (i < n && (j >= m || dp[i + 1][j] >= dp[i][j + 1])) {
+    } else if (i < n && (j >= m || dp[(i + 1) * width + j] >= dp[i * width + (j + 1)])) {
       edits.push({ type: 'delete', oldIdx: i, newIdx: j });
       i++;
     } else {
