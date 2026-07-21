@@ -1299,10 +1299,17 @@ function buildHunks(edits: Edit[], oldLines: string[], newLines: string[], oldEn
     if (e.type === 'keep') {
       keepRun++;
       if (keepRun > CONTEXT_LINES * 2 && current.length > 0) {
-        // Close current group, start fresh
+        // A run of more than 2*CONTEXT_LINES keeps separates two hunks. Close
+        // the current group, but seed the new one with the last CONTEXT_LINES-1
+        // keeps so that when the next change arrives it still has a full
+        // CONTEXT_LINES of leading context (those keeps plus this one). Without
+        // this carry-over the next hunk would start with too few leading
+        // context lines. The carried keeps are always trimmed out of the
+        // closed group's trailing context, so no line is emitted twice.
         groups.push(current);
-        current = [];
-        keepRun = 1;
+        const carry = CONTEXT_LINES - 1 > 0 ? current.slice(-(CONTEXT_LINES - 1)) : [];
+        current = [...carry];
+        keepRun = current.length + 1;
       }
       current.push(e);
     } else {

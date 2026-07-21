@@ -449,6 +449,25 @@ describe('SnapshotEngine', () => {
     assert.ok(diff.includes('+hello'));
   });
 
+  it('diff emits full leading context for a mid-file change', async () => {
+    // Regression: a change deep in a file must show CONTEXT_LINES (3) leading
+    // context lines, matching git. A grouping bug previously emitted only 2.
+    const lines = Array.from({ length: 100 }, (_, i) => `line${i}`).join('\n') + '\n';
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), lines);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), lines.replace('line50', 'CHANGED50'));
+    const diff = await engine.diff(ts, 'f.txt');
+    assert.ok(diff);
+    // The three lines immediately before the change must all be present as
+    // context, and the hunk header must span them (start at line 48 -> "-48,7").
+    assert.ok(diff.includes(' line47'), 'line47 should be leading context');
+    assert.ok(diff.includes(' line48'), 'line48 should be leading context');
+    assert.ok(diff.includes(' line49'), 'line49 should be leading context');
+    assert.ok(diff.includes('@@ -48,7 +48,7 @@'), `expected header @@ -48,7 +48,7 @@, got:\n${diff}`);
+  });
+
   it('prunes backup snapshots created by restore/undo', async () => {
     await writeFile(tmpDir, 'a.txt', 'v1');
     const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 2 });
