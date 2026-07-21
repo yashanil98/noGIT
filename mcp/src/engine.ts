@@ -660,18 +660,27 @@ export class SnapshotEngine {
     return { modified, added, deleted };
   }
 
+  // Read a path only if it is a regular file. readFile on a FIFO or socket
+  // blocks forever, so every read of agent-influenced or store paths must
+  // go through this guard.
+  private async readRegularFile(p: string): Promise<Buffer | undefined> {
+    try {
+      const st = await fs.lstat(p);
+      if (!st.isFile()) return undefined;
+      return await fs.readFile(p);
+    } catch {
+      return undefined;
+    }
+  }
+
   async readFile(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;
     const snapPath = await this.resolveSnapshotPath(ts, rel);
     if (!snapPath) return undefined;
-    try {
-      const buf = await fs.readFile(snapPath);
-      if (isBinaryBuffer(buf)) return undefined;
-      return buf.toString('utf8');
-    } catch {
-      return undefined;
-    }
+    const buf = await this.readRegularFile(snapPath);
+    if (!buf || isBinaryBuffer(buf)) return undefined;
+    return buf.toString('utf8');
   }
 
   async diff(ts: string, rel: string): Promise<string | undefined> {
@@ -691,27 +700,18 @@ export class SnapshotEngine {
     let snapBuf: Buffer;
     let snapExists = false;
     if (snapPath) {
-      try {
-        snapBuf = await fs.readFile(snapPath);
-        snapExists = true;
-      } catch {
-        snapBuf = Buffer.alloc(0);
-      }
+      const buf = await this.readRegularFile(snapPath);
+      if (buf) { snapBuf = buf; snapExists = true; }
+      else { snapBuf = Buffer.alloc(0); }
     } else {
       snapBuf = Buffer.alloc(0);
     }
 
     let currentBuf: Buffer;
     let currentExists = false;
-    try {
-      // lstat first: readFile on a FIFO/socket blocks forever
-      const st = await fs.lstat(workspacePath);
-      if (!st.isFile()) throw new Error('not a regular file');
-      currentBuf = await fs.readFile(workspacePath);
-      currentExists = true;
-    } catch {
-      currentBuf = Buffer.alloc(0);
-    }
+    const curBuf = await this.readRegularFile(workspacePath);
+    if (curBuf) { currentBuf = curBuf; currentExists = true; }
+    else { currentBuf = Buffer.alloc(0); }
 
     // Neither exists: nothing to diff
     if (!snapExists && !currentExists) return undefined;
