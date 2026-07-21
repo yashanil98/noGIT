@@ -725,7 +725,13 @@ export class SnapshotEngine {
     if (isBinaryBuffer(snapBuf) || isBinaryBuffer(currentBuf)) {
       const same = snapBuf.equals(currentBuf);
       if (same) return '';
-      return `Binary file ${rel} differs (snapshot ${ts} vs current).`;
+      if (snapExists && !currentExists) {
+        return `Binary file ${rel} was deleted (existed in snapshot ${ts}, ${snapBuf.length} bytes).`;
+      }
+      if (!snapExists && currentExists) {
+        return `Binary file ${rel} was added since snapshot ${ts} (${currentBuf.length} bytes).`;
+      }
+      return `Binary file ${rel} differs (snapshot ${ts}: ${snapBuf.length} bytes, current: ${currentBuf.length} bytes).`;
     }
 
     const snapContent = snapBuf.toString('utf8');
