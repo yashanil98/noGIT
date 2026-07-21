@@ -489,7 +489,9 @@ export class SnapshotEngine {
   // Resolve a timestamp or label to a timestamp. If the input matches the
   // timestamp format AND a snapshot with that timestamp exists, return it.
   // Otherwise, search for the most recent snapshot whose label matches
-  // (case-insensitive, exact then substring).
+  // (case-insensitive, exact then substring). Manual checkpoints are
+  // preferred over auto snapshots to avoid internal backup labels from
+  // shadowing user-created checkpoints.
   async resolveTimestamp(input: string): Promise<string | undefined> {
     const trimmed = input.trim();
     if (!trimmed) return undefined;
@@ -499,10 +501,17 @@ export class SnapshotEngine {
     }
     const snapshots = await this.listSnapshots();
     const lower = trimmed.toLowerCase();
-    const match = snapshots.find(s => s.label?.toLowerCase() === lower);
-    if (match) return match.timestamp;
-    const substr = snapshots.find(s => s.label?.toLowerCase().includes(lower));
-    return substr?.timestamp;
+    // Prefer manual checkpoints over auto snapshots for label matching
+    const manual = snapshots.filter(s => !s.auto);
+    const manualExact = manual.find(s => s.label?.toLowerCase() === lower);
+    if (manualExact) return manualExact.timestamp;
+    const manualSubstr = manual.find(s => s.label?.toLowerCase().includes(lower));
+    if (manualSubstr) return manualSubstr.timestamp;
+    // Fall back to auto snapshots if no manual match
+    const autoExact = snapshots.find(s => s.auto && s.label?.toLowerCase() === lower);
+    if (autoExact) return autoExact.timestamp;
+    const autoSubstr = snapshots.find(s => s.auto && s.label?.toLowerCase().includes(lower));
+    return autoSubstr?.timestamp;
   }
 
   async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
