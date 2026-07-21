@@ -580,6 +580,7 @@ export class SnapshotEngine {
 
     const deletedRels = toDelete.filter(r => backup.files.has(r));
     await this.removeEmptyDirs(deletedRels);
+    await this.removeOrphanedEmptyDirs();
     if ((restored > 0 || deleted > 0) && backup.ts) this.lastBackupTs = backup.ts;
     await this.pruneOldSnapshots();
     return { restored, deleted, skipped, backupTs: backup.ts };
@@ -829,6 +830,41 @@ export class SnapshotEngine {
       if (!isInside(this.root, target) || !(await isRealPathInside(this.root, target))) continue;
       try {
         await fs.rmdir(target);
+      } catch {
+        // not empty or already gone
+      }
+    }
+  }
+
+  // Remove ALL empty directories from the workspace (bottom-up). Used after
+  // exact restore to clean up directory structures that were added since the
+  // checkpoint. rmdir only succeeds on empty dirs, so non-empty dirs are safe.
+  private async removeOrphanedEmptyDirs() {
+    const dirs: string[] = [];
+    const walk = async (dir: string) => {
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const abs = path.join(dir, entry.name);
+        const rel = toWorkspaceRel(this.root, abs);
+        if (!rel) continue;
+        if (isWithinSnapshotFolder(rel, this.folderName)) continue;
+        if (this.shouldExclude(rel)) continue;
+        await walk(abs);
+        dirs.push(abs);
+      }
+    };
+    await walk(this.root);
+    // dirs is in depth-first order (deepest first), so rmdir on children
+    // happens before parents -- exactly what we need.
+    for (const dir of dirs) {
+      try {
+        await fs.rmdir(dir);
       } catch {
         // not empty or already gone
       }
