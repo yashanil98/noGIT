@@ -118,6 +118,16 @@ function sanitizeLabel(label: string): string {
   return label.replace(/[\n\r\t]/g, ' ');
 }
 
+// Truncate a string to at most `max` UTF-16 code units without splitting a
+// surrogate pair at the boundary (a lone high surrogate is invalid in JSON).
+function safeTruncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  let cut = s.slice(0, max);
+  const lastCode = cut.charCodeAt(cut.length - 1);
+  if (lastCode >= 0xD800 && lastCode <= 0xDBFF) cut = cut.slice(0, -1);
+  return cut;
+}
+
 function errorResult(err: unknown): { content: Array<{ type: 'text'; text: string }> } {
   const msg = err instanceof Error ? err.message : String(err);
   return { content: [{ type: 'text', text: `Internal error: ${msg}` }] };
@@ -286,7 +296,7 @@ server.tool(
     if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${ts}.` }] };
     const MAX_DIFF_CHARS = 60_000;
     if (diff.length > MAX_DIFF_CHARS) {
-      const truncated = diff.slice(0, MAX_DIFF_CHARS);
+      const truncated = safeTruncate(diff, MAX_DIFF_CHARS);
       const shownLines = truncated.split('\n').length;
       const totalLines = diff.split('\n').length;
       return { content: [{ type: 'text', text: `${truncated}\n\n--- Diff truncated: showing ${shownLines} of ${totalLines} lines. The file has extensive changes; use nogit_read_file to view full versions or nogit_diff_summary for an overview.` }] };
@@ -369,10 +379,7 @@ server.tool(
     if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
     const MAX_READ_CHARS = 100_000;
     if (content.length > MAX_READ_CHARS) {
-      let truncated = content.slice(0, MAX_READ_CHARS);
-      // Avoid splitting a surrogate pair at the boundary
-      const lastCode = truncated.charCodeAt(truncated.length - 1);
-      if (lastCode >= 0xD800 && lastCode <= 0xDBFF) truncated = truncated.slice(0, -1);
+      const truncated = safeTruncate(content, MAX_READ_CHARS);
       const totalLines = content.split('\n').length;
       const shownLines = truncated.split('\n').length;
       const byteSize = Buffer.byteLength(content, 'utf8');
