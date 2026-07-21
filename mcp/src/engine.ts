@@ -804,6 +804,8 @@ export class SnapshotEngine {
     } catch {
       return false;
     }
+    // Never write into excluded directories (prevents store corruption via tampered manifests)
+    if (this.shouldExclude(rel)) return false;
     const dest = path.join(this.root, rel);
     if (!isInside(this.root, dest) || !(await isRealPathInside(this.root, dest))) return false;
     let existingMode: number | undefined;
