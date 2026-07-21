@@ -1095,19 +1095,24 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     return out.join('\n');
   }
 
-  // When trailing newline status differs, make the last line of each side
-  // compare as different so the LCS does not match them. This produces
-  // the same output as git: the last line shows as changed rather than as
-  // a context line with a no-newline marker.
+  // When trailing newline status differs between old and new, make the last
+  // line of each no-newline side compare as different so the LCS treats it
+  // as changed. Also, when both sides lack a trailing newline but the OLD
+  // last line is no longer the last line in the new version (content was
+  // appended), it effectively gained a newline -- mark it different too.
   let diffOldLines = oldLines;
   let diffNewLines = newLines;
-  if (oldEndsWithNewline !== newEndsWithNewline) {
+  const needOldSentinel = !oldEndsWithNewline && oldLines.length > 0 &&
+    (oldEndsWithNewline !== newEndsWithNewline || oldLines.length !== newLines.length);
+  const needNewSentinel = !newEndsWithNewline && newLines.length > 0 &&
+    (oldEndsWithNewline !== newEndsWithNewline || oldLines.length !== newLines.length);
+  if (needOldSentinel || needNewSentinel) {
     diffOldLines = [...oldLines];
     diffNewLines = [...newLines];
-    if (diffOldLines.length > 0 && !oldEndsWithNewline) {
+    if (needOldSentinel) {
       diffOldLines[diffOldLines.length - 1] += '\x00NO_NL';
     }
-    if (diffNewLines.length > 0 && !newEndsWithNewline) {
+    if (needNewSentinel) {
       diffNewLines[diffNewLines.length - 1] += '\x00NO_NL';
     }
   }
