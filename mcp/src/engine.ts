@@ -562,13 +562,17 @@ export class SnapshotEngine {
     const backup = await this.backupBeforeRestore([...snap.files, ...toDelete]);
 
     let deleted = 0;
+    const skipped: string[] = [];
     for (const rel of toDelete) {
-      if (!backup.files.has(rel)) continue;
+      // Never delete a file that could not be backed up (size cap, read
+      // error). Report it so the caller knows the workspace does not
+      // exactly match the checkpoint.
+      if (!backup.files.has(rel)) { skipped.push(rel); continue; }
       if (await this.deleteWorkspaceFile(rel)) deleted++;
+      else skipped.push(rel);
     }
 
     let restored = 0;
-    const skipped: string[] = [];
     for (const rel of snap.files) {
       const src = await this.resolveSnapshotPath(ts, rel);
       if (!src) { skipped.push(rel); continue; }
