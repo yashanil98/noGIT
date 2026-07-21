@@ -548,6 +548,34 @@ describe('SnapshotEngine', () => {
     assert.ok(diff.includes('+hello'));
   });
 
+  it('marks the new last line no-newline when both sides lack a trailing newline', async () => {
+    // Regression: when neither file ends with a newline and the new file's last
+    // line equals an interior line of the old file, the LCS kept that line as
+    // plain context and never emitted the "No newline at end of file" marker for
+    // the new side. Applying the diff then restored a phantom trailing newline,
+    // so the diff did not round-trip. Here the old file has trailing lines that
+    // are deleted (aab, bba), and the new file ends at aab -- which the LCS
+    // matches as context. The new side's final line must carry the marker.
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), 'b\nbb\na\nbba\naab\nbba'); // no trailing NL
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), 'b\naba\na\na\nbba\naab'); // no trailing NL
+    const diff = await engine.diff(ts, 'f.txt');
+    assert.ok(diff);
+    const lines = diff.split('\n');
+    // The whole diff must end with the added last line followed by the marker,
+    // so applying it reproduces a file with no trailing newline.
+    assert.equal(lines[lines.length - 1], '\\ No newline at end of file',
+      `diff must end with the no-newline marker, got:\n${diff}`);
+    assert.equal(lines[lines.length - 2], '+aab',
+      `the added final line must be +aab (marked no-newline), got:\n${diff}`);
+    // Guard against the old bug shape: a bare context " aab" as the last real
+    // line with the marker attached only to a preceding deletion.
+    assert.ok(!/ aab\n\\ No newline at end of file$/.test(diff),
+      `new last line must not be emitted as newline-terminated context, got:\n${diff}`);
+  });
+
   it('diff emits full leading context for a mid-file change', async () => {
     // Regression: a change deep in a file must show CONTEXT_LINES (3) leading
     // context lines, matching git. A grouping bug previously emitted only 2.

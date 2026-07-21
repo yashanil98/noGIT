@@ -1271,17 +1271,20 @@ function unifiedDiff(filename: string, oldContent: string, newContent: string, o
     return out.join('\n');
   }
 
-  // When trailing newline status differs between old and new, make the last
-  // line of each no-newline side compare as different so the LCS treats it
-  // as changed. Also, when both sides lack a trailing newline but the OLD
-  // last line is no longer the last line in the new version (content was
-  // appended), it effectively gained a newline -- mark it different too.
+  // A line with no trailing newline is a distinct token from the same text
+  // with a newline: it can only match another no-newline line. Append a
+  // sentinel to the last line of each side that lacks a trailing newline so
+  // the LCS never matches a no-newline last line against a newline-terminated
+  // line. Without this, when both sides lack a trailing newline and the new
+  // file's last line equals an interior old line, the LCS keeps it as a plain
+  // context line, the "No newline at end of file" marker is never emitted for
+  // it, and applying the diff restores a phantom trailing newline. The marker
+  // itself is emitted in buildHunks, which uses the sentinel-free line arrays,
+  // so the sentinel only steers matching and never leaks into the output.
   let diffOldLines = oldLines;
   let diffNewLines = newLines;
-  const needOldSentinel = !oldEndsWithNewline && oldLines.length > 0 &&
-    (oldEndsWithNewline !== newEndsWithNewline || oldLines.length !== newLines.length);
-  const needNewSentinel = !newEndsWithNewline && newLines.length > 0 &&
-    (oldEndsWithNewline !== newEndsWithNewline || oldLines.length !== newLines.length);
+  const needOldSentinel = !oldEndsWithNewline && oldLines.length > 0;
+  const needNewSentinel = !newEndsWithNewline && newLines.length > 0;
   if (needOldSentinel || needNewSentinel) {
     diffOldLines = [...oldLines];
     diffNewLines = [...newLines];
