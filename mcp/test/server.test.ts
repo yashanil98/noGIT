@@ -20,8 +20,8 @@ class McpClient {
   private buf = '';
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 
-  constructor(root: string) {
-    this.server = spawn('node', [SERVER_PATH, '--root', root], {
+  constructor(root: string, extraArgs: string[] = []) {
+    this.server = spawn('node', [SERVER_PATH, '--root', root, ...extraArgs], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.server.stdout!.on('data', (d: Buffer) => {
@@ -220,5 +220,22 @@ describe('MCP server integration', () => {
     const text = getText(resp);
     assert.equal(text.split('\n').length, 1, `error message must be single-line, got: ${JSON.stringify(text)}`);
     assert.ok(text.includes('ghost file.txt'), 'newline in path should be replaced with a space');
+  });
+
+  it('size-limit warning reflects the configured --max-file-size', async () => {
+    const dir = await makeTmp();
+    await fs.writeFile(path.join(dir, 'big.txt'), 'x'.repeat(200));
+    await fs.writeFile(path.join(dir, 'small.txt'), 'ok');
+    const c = new McpClient(dir, ['--max-file-size', '100']);
+    try {
+      await c.init();
+      const resp = await c.toolCall(2, 'nogit_checkpoint', { label: 'cp' });
+      const text = getText(resp);
+      assert.ok(text.includes('100 bytes size limit'), `expected "100 bytes size limit", got: ${JSON.stringify(text)}`);
+      assert.ok(!text.includes('5 MB'), 'must not report the hardcoded 5 MB default');
+    } finally {
+      c.kill();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

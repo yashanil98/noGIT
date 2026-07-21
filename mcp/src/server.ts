@@ -114,6 +114,22 @@ const engine = new SnapshotEngine({
   maxFileSizeBytes: parsed.maxFileSizeBytes,
 });
 
+// The effective per-file size cap the engine uses (mirrors its default when
+// --max-file-size was not given), so skipped-file warnings can report the
+// real limit instead of a hardcoded value.
+const DEFAULT_MAX_FILE_SIZE = 5_000_000;
+const effectiveMaxFileSize =
+  (typeof parsed.maxFileSizeBytes === 'number' && parsed.maxFileSizeBytes > 0)
+    ? parsed.maxFileSizeBytes
+    : DEFAULT_MAX_FILE_SIZE;
+
+function formatByteLimit(bytes: number): string {
+  if (bytes >= 1_000_000 && bytes % 1_000_000 === 0) return `${bytes / 1_000_000} MB`;
+  if (bytes >= 1_000 && bytes % 1_000 === 0) return `${bytes / 1_000} KB`;
+  return `${bytes} bytes`;
+}
+const maxFileSizeLabel = formatByteLimit(effectiveMaxFileSize);
+
 // Replace line-breaking control characters so a value stays on one line in
 // the line-oriented tool output. Applies to labels and file paths, both of
 // which can legally contain newlines/tabs (Unix filenames, arbitrary labels).
@@ -164,8 +180,8 @@ server.tool(
       const { ts, fileCount, totalFiles } = await engine.checkpoint(label);
       if (!ts) return { content: [{ type: 'text', text: 'Checkpoint failed: no files captured or empty label.' }] };
       const skipped = totalFiles - fileCount;
-      let msg = `Checkpoint "${label}" saved: ${fileCount} files captured (${ts}).`;
-      if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit). These files are NOT protected by this checkpoint.`;
+      let msg = `Checkpoint "${sanitizeForLine(label)}" saved: ${fileCount} files captured (${ts}).`;
+      if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed ${maxFileSizeLabel} size limit). These files are NOT protected by this checkpoint.`;
       return { content: [{ type: 'text', text: msg }] };
     } catch (err) { return errorResult(err); }
   },
@@ -180,7 +196,7 @@ server.tool(
       if (!ts) return { content: [{ type: 'text', text: 'Snapshot failed: no files captured.' }] };
       const skipped = totalFiles - fileCount;
       let msg = `Snapshot saved: ${fileCount} files (${ts}).`;
-      if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit).`;
+      if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed ${maxFileSizeLabel} size limit).`;
       return { content: [{ type: 'text', text: msg }] };
     } catch (err) { return errorResult(err); }
   },
