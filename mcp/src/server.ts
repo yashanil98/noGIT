@@ -113,6 +113,11 @@ const engine = new SnapshotEngine({
   maxFileSizeBytes: parsed.maxFileSizeBytes,
 });
 
+function errorResult(err: unknown): { content: Array<{ type: 'text'; text: string }> } {
+  const msg = err instanceof Error ? err.message : String(err);
+  return { content: [{ type: 'text', text: `Internal error: ${msg}` }] };
+}
+
 const server = new McpServer(
   { name: 'nogit-mcp', version: VERSION },
   { instructions: 'noGIT provides local workspace snapshots. Call nogit_checkpoint before risky operations (bulk edits, refactors, migrations). Call nogit_restore_checkpoint_exact to roll back if something goes wrong. Call nogit_undo to reverse a restore. All tools accept checkpoint labels instead of timestamps.' },
@@ -137,12 +142,14 @@ server.tool(
   'Capture a named checkpoint of the entire workspace. Checkpoints are protected from automatic pruning.',
   { label: z.string().describe('A short label for the checkpoint, e.g. "before refactor"') },
   async ({ label }) => {
-    const { ts, fileCount, totalFiles } = await engine.checkpoint(label);
-    if (!ts) return { content: [{ type: 'text', text: 'Checkpoint failed: no files captured or empty label.' }] };
-    const skipped = totalFiles - fileCount;
-    let msg = `Checkpoint "${label}" saved: ${fileCount} files captured (${ts}).`;
-    if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit). These files are NOT protected by this checkpoint.`;
-    return { content: [{ type: 'text', text: msg }] };
+    try {
+      const { ts, fileCount, totalFiles } = await engine.checkpoint(label);
+      if (!ts) return { content: [{ type: 'text', text: 'Checkpoint failed: no files captured or empty label.' }] };
+      const skipped = totalFiles - fileCount;
+      let msg = `Checkpoint "${label}" saved: ${fileCount} files captured (${ts}).`;
+      if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit). These files are NOT protected by this checkpoint.`;
+      return { content: [{ type: 'text', text: msg }] };
+    } catch (err) { return errorResult(err); }
   },
 );
 
@@ -150,12 +157,14 @@ server.tool(
   'nogit_snapshot_now',
   'Capture an unlabeled snapshot of all workspace files. Unlike checkpoints, snapshots are automatically pruned when the store exceeds its retention limit. Use nogit_checkpoint for important save points you want to keep.',
   async () => {
-    const { ts, fileCount, totalFiles } = await engine.snapshotNow();
-    if (!ts) return { content: [{ type: 'text', text: 'Snapshot failed: no files captured.' }] };
-    const skipped = totalFiles - fileCount;
-    let msg = `Snapshot saved: ${fileCount} files (${ts}).`;
-    if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit).`;
-    return { content: [{ type: 'text', text: msg }] };
+    try {
+      const { ts, fileCount, totalFiles } = await engine.snapshotNow();
+      if (!ts) return { content: [{ type: 'text', text: 'Snapshot failed: no files captured.' }] };
+      const skipped = totalFiles - fileCount;
+      let msg = `Snapshot saved: ${fileCount} files (${ts}).`;
+      if (skipped > 0) msg += `\nWarning: ${skipped} files skipped (exceed 5 MB size limit).`;
+      return { content: [{ type: 'text', text: msg }] };
+    } catch (err) { return errorResult(err); }
   },
 );
 
@@ -187,15 +196,17 @@ server.tool(
     path: z.string().describe('Workspace-relative file path to restore'),
   },
   async ({ timestamp, path: rawRel }) => {
-    const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
-    const rel = normalizePath(rawRel);
-    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
-    const result = await engine.restoreFile(ts, rel);
-    if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
-    if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
-    const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
-    return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${ts}.${undo}` }] };
+    try {
+      const ts = await resolveTs(timestamp);
+      if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
+      const rel = normalizePath(rawRel);
+      if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
+      const result = await engine.restoreFile(ts, rel);
+      if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
+      if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
+      const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
+      return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${ts}.${undo}` }] };
+    } catch (err) { return errorResult(err); }
   },
 );
 
@@ -204,18 +215,20 @@ server.tool(
   'Restore all files from a snapshot (additive, does not delete files added since). Current state is backed up first.',
   { timestamp: z.string().describe('Snapshot timestamp or checkpoint label') },
   async ({ timestamp }) => {
-    const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
-    const { restored, skipped, backupTs } = await engine.restoreSnapshot(ts);
-    if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${ts} not found or contains no files.` }] };
-    const undo = (restored > 0 && backupTs) ? ` To undo, restore from backup ${backupTs}.` : '';
-    let msg = `Restored ${restored} files from snapshot ${ts}.${undo}`;
-    if (skipped.length > 0) {
-      const shown = skipped.slice(0, 10);
-      const extra = skipped.length > 10 ? ` and ${skipped.length - 10} more` : '';
-      msg += `\nSkipped ${skipped.length} files (could not back up or copy): ${shown.join(', ')}${extra}`;
-    }
-    return { content: [{ type: 'text', text: msg }] };
+    try {
+      const ts = await resolveTs(timestamp);
+      if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
+      const { restored, skipped, backupTs } = await engine.restoreSnapshot(ts);
+      if (restored === 0 && skipped.length === 0) return { content: [{ type: 'text', text: `Restore failed: snapshot ${ts} not found or contains no files.` }] };
+      const undo = (restored > 0 && backupTs) ? ` To undo, restore from backup ${backupTs}.` : '';
+      let msg = `Restored ${restored} files from snapshot ${ts}.${undo}`;
+      if (skipped.length > 0) {
+        const shown = skipped.slice(0, 10);
+        const extra = skipped.length > 10 ? ` and ${skipped.length - 10} more` : '';
+        msg += `\nSkipped ${skipped.length} files (could not back up or copy): ${shown.join(', ')}${extra}`;
+      }
+      return { content: [{ type: 'text', text: msg }] };
+    } catch (err) { return errorResult(err); }
   },
 );
 
@@ -224,18 +237,20 @@ server.tool(
   'Restore the workspace to exactly a checkpoint: restores its files AND deletes files added since. This is the "undo everything" button. Only works on manual checkpoints. Current state is backed up first. Omit timestamp to restore the latest checkpoint. Accepts a checkpoint label instead of a timestamp.',
   { timestamp: z.string().optional().describe('Checkpoint timestamp or label (default: latest checkpoint)') },
   async ({ timestamp }) => {
-    const ts = await resolveTs(timestamp);
-    if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
-    const result = await engine.restoreCheckpointExact(ts);
-    if (!result) return { content: [{ type: 'text', text: `Failed: ${ts} is not a manual checkpoint or does not exist.` }] };
-    const undo = ((result.restored > 0 || result.deleted > 0) && result.backupTs) ? ` To undo, restore from backup ${result.backupTs}.` : '';
-    let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${ts}.${undo}`;
-    if (result.skipped.length > 0) {
-      const shown = result.skipped.slice(0, 10);
-      const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
-      msg += `\nSkipped ${result.skipped.length} files (could not back up): ${shown.join(', ')}${extra}`;
-    }
-    return { content: [{ type: 'text', text: msg }] };
+    try {
+      const ts = await resolveTs(timestamp);
+      if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
+      const result = await engine.restoreCheckpointExact(ts);
+      if (!result) return { content: [{ type: 'text', text: `Failed: ${ts} is not a manual checkpoint or does not exist.` }] };
+      const undo = ((result.restored > 0 || result.deleted > 0) && result.backupTs) ? ` To undo, restore from backup ${result.backupTs}.` : '';
+      let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${ts}.${undo}`;
+      if (result.skipped.length > 0) {
+        const shown = result.skipped.slice(0, 10);
+        const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
+        msg += `\nSkipped ${result.skipped.length} files (could not back up): ${shown.join(', ')}${extra}`;
+      }
+      return { content: [{ type: 'text', text: msg }] };
+    } catch (err) { return errorResult(err); }
   },
 );
 
@@ -358,15 +373,17 @@ server.tool(
   'nogit_undo',
   'Undo the last restore operation by restoring from the automatic backup.',
   async () => {
-    const result = await engine.undo();
-    if (!result) return { content: [{ type: 'text', text: 'Nothing to undo.' }] };
-    let msg = `Undo complete: ${result.restored} files restored from backup.`;
-    if (result.skipped.length > 0) {
-      const shown = result.skipped.slice(0, 10);
-      const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
-      msg += `\nSkipped ${result.skipped.length} files: ${shown.join(', ')}${extra}`;
-    }
-    return { content: [{ type: 'text', text: msg }] };
+    try {
+      const result = await engine.undo();
+      if (!result) return { content: [{ type: 'text', text: 'Nothing to undo.' }] };
+      let msg = `Undo complete: ${result.restored} files restored from backup.`;
+      if (result.skipped.length > 0) {
+        const shown = result.skipped.slice(0, 10);
+        const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
+        msg += `\nSkipped ${result.skipped.length} files: ${shown.join(', ')}${extra}`;
+      }
+      return { content: [{ type: 'text', text: msg }] };
+    } catch (err) { return errorResult(err); }
   },
 );
 
