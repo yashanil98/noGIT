@@ -374,6 +374,13 @@ export class SnapshotEngine {
 
   private shouldExclude(rel: string): boolean {
     if (isWithinSnapshotFolder(rel, this.folderName)) return true;
+    // A root-level file named like the snapshot manifest maps to the same path
+    // as the manifest inside each snapshot directory (snapDir/meta.json). If it
+    // were captured, the manifest write would overwrite the copied file, and a
+    // later restore would then write the manifest JSON back over the user's own
+    // file -- silent data loss. Reserve these names at the workspace root only;
+    // nested files like sub/meta.json land at snapDir/sub/meta.json and are safe.
+    if (rel === 'meta.json' || rel === 'meta.json.tmp') return true;
     return matchesAny(this.excludes, rel);
   }
 
@@ -767,6 +774,9 @@ export class SnapshotEngine {
   async readFile(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;
+    // Never read a reserved store path (e.g. root meta.json resolves to the
+    // snapshot manifest, not a captured workspace file).
+    if (this.shouldExclude(rel)) return undefined;
     const snapPath = await this.resolveSnapshotPath(ts, rel);
     if (!snapPath) return undefined;
     const buf = await this.readRegularFile(snapPath);

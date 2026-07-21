@@ -198,6 +198,43 @@ describe('SnapshotEngine', () => {
     assert.equal(fileCount, 1);
   });
 
+  it('does not capture or clobber a root-level meta.json', async () => {
+    // A workspace file named meta.json at the root maps to the same path as a
+    // snapshot's own manifest (snapDir/meta.json). It must be reserved so the
+    // manifest write never overwrites it and a later restore never writes the
+    // manifest JSON back over the user's file.
+    const userContent = JSON.stringify({ real: 'data', value: 42 }, null, 2);
+    await writeFile(tmpDir, 'meta.json', userContent);
+    await writeFile(tmpDir, 'other.txt', 'hello');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts, fileCount } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    // Only other.txt is captured; meta.json is reserved.
+    assert.equal(fileCount, 1);
+    const files = await engine.getSnapshotFiles(ts);
+    assert.deepEqual(files, ['other.txt']);
+    // Reading the reserved name must not leak the manifest as file content.
+    assert.equal(await engine.readFile(ts, 'meta.json'), undefined);
+    // A restore must leave the user's file untouched rather than writing the
+    // manifest over it.
+    await writeFile(tmpDir, 'meta.json', 'edited');
+    const r = await engine.restoreFile(ts, 'meta.json');
+    assert.equal(r.ok, false);
+    assert.equal(await readFile(tmpDir, 'meta.json'), 'edited');
+  });
+
+  it('captures a nested meta.json normally', async () => {
+    // Only the root meta.json collides with the manifest; a nested one is a
+    // real workspace file and must be captured and restorable.
+    const nested = JSON.stringify({ nested: 'user data' });
+    await writeFile(tmpDir, 'sub/meta.json', nested);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts, fileCount } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    assert.equal(fileCount, 1);
+    assert.equal(await engine.readFile(ts, 'sub/meta.json'), nested);
+  });
+
   it('diff rejects paths inside the .nogit store', async () => {
     await writeFile(tmpDir, 'a.txt', 'x');
     const engine = new SnapshotEngine({ root: tmpDir });
