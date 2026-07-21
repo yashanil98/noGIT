@@ -291,7 +291,9 @@ export class SnapshotEngine {
   constructor(opts: EngineOptions) {
     this.root = path.resolve(opts.root);
     this.folderName = opts.snapshotFolderName ?? '.nogit';
-    this.excludes = opts.excludePatterns ?? DEFAULT_EXCLUDES;
+    // User patterns are additive: nobody excluding *.log intends to start
+    // snapshotting node_modules and .git.
+    this.excludes = [...DEFAULT_EXCLUDES, ...(opts.excludePatterns ?? [])];
     const rawMax = opts.maxFileSizeBytes;
     this.maxBytes = (typeof rawMax === 'number' && Number.isFinite(rawMax) && rawMax > 0) ? rawMax : 5_000_000;
     const rawSnaps = opts.maxSnapshots;
