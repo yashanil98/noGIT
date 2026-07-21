@@ -342,7 +342,10 @@ server.tool(
     if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
     const MAX_READ_BYTES = 100_000;
     if (content.length > MAX_READ_BYTES) {
-      const truncated = content.slice(0, MAX_READ_BYTES);
+      let truncated = content.slice(0, MAX_READ_BYTES);
+      // Avoid splitting a surrogate pair at the boundary
+      const lastCode = truncated.charCodeAt(truncated.length - 1);
+      if (lastCode >= 0xD800 && lastCode <= 0xDBFF) truncated = truncated.slice(0, -1);
       const totalLines = content.split('\n').length;
       const shownLines = truncated.split('\n').length;
       return { content: [{ type: 'text', text: `${truncated}\n\n--- Truncated: showing ${shownLines} of ${totalLines} lines (${content.length} bytes total). Use nogit_restore_file to get the full file on disk.` }] };
