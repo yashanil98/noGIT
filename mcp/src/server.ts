@@ -218,12 +218,13 @@ server.tool(
       const ts = await resolveTs(timestamp);
       if (!ts) return { content: [{ type: 'text', text: `Could not resolve "${timestamp}" to a snapshot. Use nogit_list_snapshots to see available snapshots.` }] };
       const rel = normalizePath(rawRel);
-      if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
+      if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${sanitizeForLine(rawRel)}" escapes the workspace root.` }] };
+      const relDisp = sanitizeForLine(rel);
       const result = await engine.restoreFile(ts, rel);
-      if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${rel}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
-      if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${rel} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
+      if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${relDisp}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
+      if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${relDisp} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
       const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
-      return { content: [{ type: 'text', text: `Restored ${rel} from snapshot ${ts}.${undo}` }] };
+      return { content: [{ type: 'text', text: `Restored ${relDisp} from snapshot ${ts}.${undo}` }] };
     } catch (err) { return errorResult(err); }
   },
 );
@@ -241,7 +242,7 @@ server.tool(
       const undo = (restored > 0 && backupTs) ? ` To undo, restore from backup ${backupTs}.` : '';
       let msg = `Restored ${restored} files from snapshot ${ts}.${undo}`;
       if (skipped.length > 0) {
-        const shown = skipped.slice(0, 10);
+        const shown = skipped.slice(0, 10).map(sanitizeForLine);
         const extra = skipped.length > 10 ? ` and ${skipped.length - 10} more` : '';
         msg += `\nSkipped ${skipped.length} files (could not back up or copy): ${shown.join(', ')}${extra}`;
       }
@@ -263,7 +264,7 @@ server.tool(
       const undo = ((result.restored > 0 || result.deleted > 0) && result.backupTs) ? ` To undo, restore from backup ${result.backupTs}.` : '';
       let msg = `Exact restore complete: ${result.restored} files restored, ${result.deleted} files deleted to match checkpoint ${ts}.${undo}`;
       if (result.skipped.length > 0) {
-        const shown = result.skipped.slice(0, 10);
+        const shown = result.skipped.slice(0, 10).map(sanitizeForLine);
         const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
         msg += `\nSkipped ${result.skipped.length} files (could not back up): ${shown.join(', ')}${extra}`;
       }
@@ -293,10 +294,11 @@ server.tool(
     const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const rel = normalizePath(rawRel);
-    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
+    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${sanitizeForLine(rawRel)}" escapes the workspace root.` }] };
+    const relDisp = sanitizeForLine(rel);
     const diff = await engine.diff(ts, rel);
-    if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${ts} or in the current workspace.` }] };
-    if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${ts}.` }] };
+    if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${relDisp} does not exist in snapshot ${ts} or in the current workspace.` }] };
+    if (diff === '') return { content: [{ type: 'text', text: `No changes: ${relDisp} is identical to snapshot ${ts}.` }] };
     const MAX_DIFF_CHARS = 60_000;
     if (diff.length > MAX_DIFF_CHARS) {
       const truncated = safeTruncate(diff, MAX_DIFF_CHARS);
@@ -377,9 +379,9 @@ server.tool(
     const ts = await resolveTs(timestamp);
     if (!ts) return { content: [{ type: 'text', text: resolveTsError(timestamp) }] };
     const rel = normalizePath(rawRel);
-    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${rawRel}" escapes the workspace root.` }] };
+    if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${sanitizeForLine(rawRel)}" escapes the workspace root.` }] };
     const content = await engine.readFile(ts, rel);
-    if (content === undefined) return { content: [{ type: 'text', text: `File ${rel} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
+    if (content === undefined) return { content: [{ type: 'text', text: `File ${sanitizeForLine(rel)} not found in snapshot ${ts}, is binary, or path is invalid.` }] };
     const MAX_READ_CHARS = 100_000;
     if (content.length > MAX_READ_CHARS) {
       const truncated = safeTruncate(content, MAX_READ_CHARS);
@@ -401,7 +403,7 @@ server.tool(
       if (!result) return { content: [{ type: 'text', text: 'Nothing to undo.' }] };
       let msg = `Undo complete: ${result.restored} files restored from backup.`;
       if (result.skipped.length > 0) {
-        const shown = result.skipped.slice(0, 10);
+        const shown = result.skipped.slice(0, 10).map(sanitizeForLine);
         const extra = result.skipped.length > 10 ? ` and ${result.skipped.length - 10} more` : '';
         msg += `\nSkipped ${result.skipped.length} files: ${shown.join(', ')}${extra}`;
       }

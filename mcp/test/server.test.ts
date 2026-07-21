@@ -210,4 +210,15 @@ describe('MCP server integration', () => {
       assert.ok(!text.includes('To undo'), 'should not promise undo when 0 files restored');
     }
   });
+
+  it('sanitizes newline-containing paths in error messages', async () => {
+    await client.toolCall(10, 'nogit_checkpoint', { label: 'base' });
+    // A path with a newline that does not exist -> the diff error message must
+    // stay on a single line (raw newline would split it and confuse parsing).
+    const weird = 'ghost\nfile.txt';
+    const resp = await client.toolCall(11, 'nogit_diff', { timestamp: 'base', path: weird });
+    const text = getText(resp);
+    assert.equal(text.split('\n').length, 1, `error message must be single-line, got: ${JSON.stringify(text)}`);
+    assert.ok(text.includes('ghost file.txt'), 'newline in path should be replaced with a space');
+  });
 });
