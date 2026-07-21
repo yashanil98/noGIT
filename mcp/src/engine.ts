@@ -516,6 +516,7 @@ export class SnapshotEngine {
   async restoreFile(ts: string, rel: string): Promise<{ ok: boolean; skipped?: string; backupTs?: string }> {
     if (!isValidSnapshotName(ts)) return { ok: false };
     if (typeof rel !== 'string') return { ok: false };
+    if (this.shouldExclude(rel)) return { ok: false };
     const src = await this.resolveSnapshotPath(ts, rel);
     if (!src) return { ok: false };
     // Verify the snapshot file actually exists before creating a backup.
@@ -688,6 +689,8 @@ export class SnapshotEngine {
   async diff(ts: string, rel: string): Promise<string | undefined> {
     if (!isValidSnapshotName(ts)) return undefined;
     if (typeof rel !== 'string') return undefined;
+    // Reject paths inside the store or other excluded directories
+    if (this.shouldExclude(rel)) return undefined;
     // Verify the snapshot exists before diffing. Without this check, a
     // nonexistent timestamp produces a misleading "file added" diff instead
     // of returning undefined (snapshot not found).
