@@ -861,6 +861,8 @@ export class SnapshotEngine {
 
   private async sweepEmptyDirs(dir: string): Promise<boolean> {
     if (!isInside(this.root, dir)) return false;
+    const rel = toWorkspaceRel(this.root, dir);
+    if (rel && this.shouldExclude(rel)) return false;
     let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -871,9 +873,10 @@ export class SnapshotEngine {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const abs = path.join(dir, entry.name);
-      const rel = toWorkspaceRel(this.root, abs);
-      if (!rel) continue;
-      if (isWithinSnapshotFolder(rel, this.folderName)) continue;
+      const childRel = toWorkspaceRel(this.root, abs);
+      if (!childRel) continue;
+      if (isWithinSnapshotFolder(childRel, this.folderName)) continue;
+      if (this.shouldExclude(childRel)) continue;
       await this.sweepEmptyDirs(abs);
     }
     // Try to remove this dir (fails if non-empty -- safe)
