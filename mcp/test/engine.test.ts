@@ -651,4 +651,18 @@ describe('SnapshotEngine', () => {
     const bursts = (await engine.listSnapshots()).filter(s => s.auto);
     assert.ok(bursts.length >= 1, 'valid threshold of 3 should burst after 3 changes');
   });
+
+  it('burst threshold counts real files, not directory events', async () => {
+    await writeFile(tmpDir, 'seed.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    engine.startWatching({ quietMs: 200, burstMinFiles: 3 });
+    // Create only directories (no real files change). Directory events must
+    // not count toward the threshold, so no burst should ever fire -- this
+    // is deterministic regardless of how many spurious events fs.watch emits.
+    for (let i = 0; i < 6; i++) await fs.mkdir(path.join(tmpDir, `dir${i}`));
+    await new Promise(r => setTimeout(r, 600));
+    engine.stopWatching();
+    const bursts = (await engine.listSnapshots()).filter(s => s.auto);
+    assert.equal(bursts.length, 0, 'directory events must not trigger a burst');
+  });
 });

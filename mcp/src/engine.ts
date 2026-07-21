@@ -1043,12 +1043,15 @@ export class SnapshotEngine {
   }
 
   private async flushWatchBurst(): Promise<void> {
+    // Cheap pre-check on the raw event count to avoid the lstat sweep when
+    // clearly below threshold. The authoritative check is on real files below.
     if (this.watchModified.size < this.watchBurstMin) return;
     const candidates = [...this.watchModified];
     this.watchModified.clear();
     // Keep only entries that are currently regular files. Watch events can
-    // include directories or transient entries, which would inflate the
-    // label count relative to what actually gets captured.
+    // include directories or transient entries, which would otherwise both
+    // inflate the label count and let the burst fire below the real-file
+    // threshold.
     const files: string[] = [];
     for (const rel of candidates) {
       try {
@@ -1058,7 +1061,15 @@ export class SnapshotEngine {
         // gone or inaccessible; skip
       }
     }
-    if (files.length === 0) return;
+    // Enforce the threshold against the actual number of changed files, not
+    // the raw watch-event count (which may include directories/transients).
+    if (files.length < this.watchBurstMin) {
+      // Not enough real files changed. Put them back so a later event that
+      // pushes the count over the threshold still triggers a burst that
+      // includes them.
+      for (const rel of files) this.watchModified.add(rel);
+      return;
+    }
     const label = `auto: ${files.length} files changed`;
     await this.writeSnapshot(files, label, true);
     await this.pruneOldSnapshots();
