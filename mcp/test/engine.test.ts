@@ -575,6 +575,17 @@ describe('SnapshotEngine', () => {
     assert.equal(content, undefined);
   });
 
+  it('detects binary content past the first 8KB', async () => {
+    // A file that looks like text for 9KB then has a NUL byte must be
+    // treated as binary, not returned with raw NUL bytes.
+    const buf = Buffer.concat([Buffer.from('a'.repeat(9000)), Buffer.from([0x00]), Buffer.from('tail')]);
+    await fs.writeFile(path.join(tmpDir, 'late-binary.dat'), buf);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    assert.equal(await engine.readFile(ts, 'late-binary.dat'), undefined);
+  });
+
   it('custom excludePatterns are respected', async () => {
     await writeFile(tmpDir, 'keep.txt', 'yes');
     await writeFile(tmpDir, 'logs/app.log', 'no');

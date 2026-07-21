@@ -1087,11 +1087,12 @@ function countLines(s: string): number {
 
 // Detect binary content by checking for null bytes in the first 8KB.
 function isBinaryBuffer(buf: Buffer): boolean {
-  const check = Math.min(buf.length, 8192);
-  for (let i = 0; i < check; i++) {
-    if (buf[i] === 0) return true;
-  }
-  return false;
+  // A NUL byte anywhere marks the content as binary. Scan the whole buffer
+  // (Buffer.indexOf is a fast native scan) rather than only the first 8KB,
+  // so files with binary data past the first page are not mistaken for text
+  // and returned/diffed with raw NUL bytes. Buffers are already bounded by
+  // maxFileSizeBytes, so a full scan is cheap.
+  return buf.indexOf(0) !== -1;
 }
 
 // Unified diff with proper context hunks. Uses a simple O(n*m) LCS to find
