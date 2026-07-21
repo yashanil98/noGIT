@@ -300,18 +300,24 @@ export class SnapshotEngine {
     this.maxSnapshots = (typeof rawSnaps === 'number' && Number.isFinite(rawSnaps) && rawSnaps >= 0) ? rawSnaps : 48;
   }
 
-  // Monotonic snapshot name: never reissues a name that was used earlier in
-  // this engine's lifetime, even if pruning has since deleted the directory.
-  // This prevents new snapshots from sorting as oldest and being immediately
-  // re-pruned.
+  // Monotonic snapshot name: never issues a name that sorts at or before a
+  // name already issued in this engine's lifetime, even if pruning has since
+  // deleted the directory or the wall clock jumps backwards (NTP, DST). This
+  // keeps names strictly increasing so newest snapshots never sort as oldest
+  // and get re-pruned.
   private nextSnapshotName(base: string, existing: string[]): string {
     const ts = uniqueSnapshotName(base, existing);
     const [tsBase, tsSuffix] = splitSnapshotName(ts);
-    if (tsBase === this.lastIssuedBase && tsSuffix <= this.lastIssuedSuffix) {
-      const next = this.lastIssuedSuffix + 1;
-      this.lastIssuedBase = tsBase;
+    // If the candidate base is older than the last issued base, or the same
+    // base with a non-increasing suffix, bump the suffix on the last base so
+    // the name stays strictly increasing. Skip any suffix already on disk.
+    if (tsBase < this.lastIssuedBase ||
+        (tsBase === this.lastIssuedBase && tsSuffix <= this.lastIssuedSuffix)) {
+      const taken = new Set(existing);
+      let next = this.lastIssuedSuffix + 1;
+      while (taken.has(`${this.lastIssuedBase}-${next}`)) next++;
       this.lastIssuedSuffix = next;
-      return next === 0 ? tsBase : `${tsBase}-${next}`;
+      return `${this.lastIssuedBase}-${next}`;
     }
     this.lastIssuedBase = tsBase;
     this.lastIssuedSuffix = tsSuffix;
