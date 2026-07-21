@@ -1015,8 +1015,21 @@ export class SnapshotEngine {
 
   private async flushWatchBurst(): Promise<void> {
     if (this.watchModified.size < this.watchBurstMin) return;
-    const files = [...this.watchModified];
+    const candidates = [...this.watchModified];
     this.watchModified.clear();
+    // Keep only entries that are currently regular files. Watch events can
+    // include directories or transient entries, which would inflate the
+    // label count relative to what actually gets captured.
+    const files: string[] = [];
+    for (const rel of candidates) {
+      try {
+        const st = await fs.lstat(path.join(this.root, rel));
+        if (st.isFile()) files.push(rel);
+      } catch {
+        // gone or inaccessible; skip
+      }
+    }
+    if (files.length === 0) return;
     const label = `auto: ${files.length} files changed`;
     await this.writeSnapshot(files, label, true);
     await this.pruneOldSnapshots();
