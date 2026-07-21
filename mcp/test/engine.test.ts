@@ -287,6 +287,31 @@ describe('SnapshotEngine', () => {
     assert.equal(labels.length, 1);
   });
 
+  it('removes stale manifest-less orphans but protects fresh ones', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir, maxSnapshots: 2 });
+    await engine.checkpoint('cp');
+    const snapsRoot = path.join(tmpDir, '.nogit', 'snapshots');
+
+    // Fresh manifest-less dir (simulates an in-flight write) -> must survive
+    const fresh = path.join(snapsRoot, '20260101-120010');
+    await fs.mkdir(fresh);
+    await fs.writeFile(path.join(fresh, 'a.txt'), 'in-flight');
+
+    // Stale manifest-less dir (simulates a crashed write) -> must be removed
+    const stale = path.join(snapsRoot, '20260101-120011');
+    await fs.mkdir(stale);
+    await fs.writeFile(path.join(stale, 'a.txt'), 'crashed');
+    const old = new Date(Date.now() - 120_000); // 2 min ago, beyond the 60s grace
+    await fs.utimes(stale, old, old);
+
+    // Trigger prune
+    for (let i = 0; i < 4; i++) { await writeFile(tmpDir, 'a.txt', `v${i}`); await engine.snapshotNow(); }
+
+    assert.ok(await exists(fresh), 'fresh manifest-less dir (in-flight write) must be protected');
+    assert.ok(!(await exists(stale)), 'stale manifest-less dir (crashed orphan) must be removed');
+  });
+
   it('skips symlinks during snapshot', async () => {
     await writeFile(tmpDir, 'real.txt', 'content');
     await fs.symlink(path.join(tmpDir, 'real.txt'), path.join(tmpDir, 'link.txt'));

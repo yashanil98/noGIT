@@ -276,6 +276,13 @@ const COPY_CONCURRENCY = 16;
 // beyond any reasonable label.
 const MAX_LABEL_LENGTH = 1000;
 
+// Grace period before a manifest-less snapshot directory is treated as a
+// crashed-write orphan and removed during pruning. Genuine writes complete
+// in milliseconds; 60s is far longer than any real write yet bounds how long
+// orphans linger. Guards against deleting a directory whose manifest write is
+// still in flight from a concurrent operation.
+const ORPHAN_GRACE_MS = 60_000;
+
 export interface EngineOptions {
   root: string;
   snapshotFolderName?: string;
@@ -960,9 +967,14 @@ export class SnapshotEngine {
         }
         const meta = await this.readManifestSafe(root, d);
         if (meta === undefined) {
-          // No manifest: likely an in-flight write from a concurrent operation.
-          // Skip it entirely -- do not prune, do not count toward the cap.
-          // It will be picked up on the next prune pass after the write completes.
+          // No manifest. This is either an in-flight write from a concurrent
+          // operation (manifest arrives within milliseconds) or a crashed-write
+          // orphan (manifest will never arrive). Distinguish by directory age:
+          // remove it only if it is older than the grace period, so genuine
+          // in-flight writes are never touched but crashed orphans get cleaned.
+          if (await this.isStaleOrphan(path.join(root, d))) {
+            await fs.rm(path.join(root, d), { recursive: true, force: true }).catch(() => {});
+          }
           continue;
         }
         // null = corrupt manifest, treat as pruneable non-checkpoint
@@ -986,6 +998,19 @@ export class SnapshotEngine {
       try { await fs.lstat(metaPath); return null; } catch { return undefined; }
     }
     return parseManifest(buf.toString('utf8')) ?? null;
+  }
+
+  // A manifest-less snapshot directory is a crashed-write orphan (rather than
+  // an in-flight write) if it has not been modified within the grace period.
+  // Snapshot writes complete in milliseconds, so a dir untouched for the grace
+  // window will never gain a manifest.
+  private async isStaleOrphan(dir: string): Promise<boolean> {
+    try {
+      const st = await fs.stat(dir);
+      return (Date.now() - st.mtimeMs) > ORPHAN_GRACE_MS;
+    } catch {
+      return false;
+    }
   }
 
 
