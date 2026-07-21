@@ -284,6 +284,13 @@ server.tool(
     const diff = await engine.diff(ts, rel);
     if (diff === undefined) return { content: [{ type: 'text', text: `Cannot diff: ${rel} does not exist in snapshot ${ts} or in the current workspace.` }] };
     if (diff === '') return { content: [{ type: 'text', text: `No changes: ${rel} is identical to snapshot ${ts}.` }] };
+    const MAX_DIFF_CHARS = 60_000;
+    if (diff.length > MAX_DIFF_CHARS) {
+      const truncated = diff.slice(0, MAX_DIFF_CHARS);
+      const shownLines = truncated.split('\n').length;
+      const totalLines = diff.split('\n').length;
+      return { content: [{ type: 'text', text: `${truncated}\n\n--- Diff truncated: showing ${shownLines} of ${totalLines} lines. The file has extensive changes; use nogit_read_file to view full versions or nogit_diff_summary for an overview.` }] };
+    }
     return { content: [{ type: 'text', text: diff }] };
   },
 );
