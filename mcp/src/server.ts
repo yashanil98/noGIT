@@ -51,8 +51,8 @@ function parseArgs(): ParsedArgs {
     else if (args[i] === '--max-file-size' && hasValue(i)) { const n = parseInt(args[i + 1], 10); if (n > 0) maxFileSizeBytes = n; i++; }
     else if (args[i].startsWith('--max-file-size=')) { const n = parseInt(args[i].slice('--max-file-size='.length), 10); if (n > 0) maxFileSizeBytes = n; }
     else if (args[i] === '--watch') { watch = true; }
-    else if (args[i] === '--burst-min-files' && hasValue(i)) { burstMinFiles = parseInt(args[i + 1], 10) || 10; i++; }
-    else if (args[i].startsWith('--burst-min-files=')) { burstMinFiles = parseInt(args[i].slice('--burst-min-files='.length), 10) || 10; }
+    else if (args[i] === '--burst-min-files' && hasValue(i)) { const n = parseInt(args[i + 1], 10); if (n >= 1) burstMinFiles = n; i++; }
+    else if (args[i].startsWith('--burst-min-files=')) { const n = parseInt(args[i].slice('--burst-min-files='.length), 10); if (n >= 1) burstMinFiles = n; }
   }
   return {
     root,

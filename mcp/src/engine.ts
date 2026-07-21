@@ -989,8 +989,15 @@ export class SnapshotEngine {
 
   startWatching(opts?: { quietMs?: number; burstMinFiles?: number }): void {
     if (this.watcher) return; // already watching
-    if (opts?.quietMs !== undefined) this.watchQuietMs = opts.quietMs;
-    if (opts?.burstMinFiles !== undefined) this.watchBurstMin = opts.burstMinFiles;
+    // Validate: a non-positive or non-finite quiet time / threshold would
+    // make the watcher fire a burst on every single change, defeating the
+    // debounce. Fall back to the defaults for invalid values.
+    if (opts?.quietMs !== undefined && Number.isFinite(opts.quietMs) && opts.quietMs > 0) {
+      this.watchQuietMs = opts.quietMs;
+    }
+    if (opts?.burstMinFiles !== undefined && Number.isFinite(opts.burstMinFiles) && opts.burstMinFiles >= 1) {
+      this.watchBurstMin = Math.floor(opts.burstMinFiles);
+    }
 
     try {
       this.watcher = fsWatch.watch(this.root, { recursive: true }, (eventType, filename) => {

@@ -625,4 +625,30 @@ describe('SnapshotEngine', () => {
     assert.ok(files!.includes('small.txt'));
     assert.ok(!files!.includes('big.txt'));
   });
+
+  it('startWatching ignores an invalid burst threshold', async () => {
+    await writeFile(tmpDir, 'seed.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    // A negative threshold must not make the watcher burst on one change;
+    // it should fall back to the default (10).
+    engine.startWatching({ quietMs: 150, burstMinFiles: -5 });
+    await writeFile(tmpDir, 'one.txt', 'single change');
+    await new Promise(r => setTimeout(r, 500));
+    engine.stopWatching();
+    const bursts = (await engine.listSnapshots()).filter(s => s.auto);
+    assert.equal(bursts.length, 0, 'negative threshold must not trigger a burst on a single change');
+  });
+
+  it('startWatching honors a valid burst threshold', async () => {
+    await writeFile(tmpDir, 'seed.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    engine.startWatching({ quietMs: 150, burstMinFiles: 3 });
+    await writeFile(tmpDir, 'a.txt', '1');
+    await writeFile(tmpDir, 'b.txt', '2');
+    await writeFile(tmpDir, 'c.txt', '3');
+    await new Promise(r => setTimeout(r, 500));
+    engine.stopWatching();
+    const bursts = (await engine.listSnapshots()).filter(s => s.auto);
+    assert.ok(bursts.length >= 1, 'valid threshold of 3 should burst after 3 changes');
+  });
 });
