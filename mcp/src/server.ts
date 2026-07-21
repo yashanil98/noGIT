@@ -237,7 +237,7 @@ server.tool(
       if (!rel) return { content: [{ type: 'text', text: `Invalid path: "${sanitizeForLine(rawRel)}" escapes the workspace root.` }] };
       const relDisp = sanitizeForLine(rel);
       const result = await engine.restoreFile(ts, rel);
-      if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${relDisp}: current version could not be backed up (file may exceed size limit). Restore was aborted to avoid data loss.` }] };
+      if (result.skipped) return { content: [{ type: 'text', text: `Restore skipped for ${relDisp}: could not safely replace the current file. This usually means the current version could not be backed up (may exceed the size limit) or the destination path is blocked (e.g. by a non-directory). No changes were made.` }] };
       if (!result.ok) return { content: [{ type: 'text', text: `Restore failed: ${relDisp} was not found in snapshot ${ts}. Use nogit_snapshot_files to see what files are available.` }] };
       const undo = result.backupTs ? ` To undo, restore from backup ${result.backupTs}.` : '';
       return { content: [{ type: 'text', text: `Restored ${relDisp} from snapshot ${ts}.${undo}` }] };

@@ -86,6 +86,31 @@ describe('SnapshotEngine', () => {
     assert.equal(content, 'original');
   });
 
+  it('restoreFile reports skipped (not "not found") when the copy fails', async () => {
+    // File exists in the snapshot, but the destination path is blocked by a
+    // non-directory so copyInto fails. This must be reported as skipped, not
+    // as "file not found in snapshot".
+    await writeFile(tmpDir, 'dir/file.txt', 'v1');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    await fs.rm(path.join(tmpDir, 'dir'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'dir'), 'now a file blocking the path');
+    const result = await engine.restoreFile(ts, 'dir/file.txt');
+    assert.equal(result.ok, false);
+    assert.equal(result.skipped, 'dir/file.txt', 'a copy failure on an existing snapshot file must be skipped, not treated as not-found');
+  });
+
+  it('restoreFile returns not-found (no skipped) for a file absent from the snapshot', async () => {
+    await writeFile(tmpDir, 'a.txt', 'x');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const result = await engine.restoreFile(ts, 'missing.txt');
+    assert.equal(result.ok, false);
+    assert.equal(result.skipped, undefined, 'a genuinely missing file must not be reported as skipped');
+  });
+
   it('restoreSnapshot restores all files and reports skipped', async () => {
     await writeFile(tmpDir, 'a.txt', 'A');
     await writeFile(tmpDir, 'b.txt', 'B');

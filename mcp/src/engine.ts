@@ -557,11 +557,17 @@ export class SnapshotEngine {
     }
     const backup = await this.backupBeforeRestore([rel]);
     if (!(await this.canOverwrite(rel, backup.files))) {
+      await this.pruneOldSnapshots();
       return { ok: false, skipped: rel };
     }
     const ok = await this.copyInto(src, rel);
     if (ok && backup.ts) this.lastBackupTs = backup.ts;
     await this.pruneOldSnapshots();
+    // The snapshot file exists (verified above), so a copy failure is a
+    // destination-side problem (e.g. path blocked by a non-directory), not a
+    // "file not in snapshot" case. Report it as skipped so the caller gives an
+    // accurate reason instead of "not found in snapshot".
+    if (!ok) return { ok: false, skipped: rel, backupTs: backup.ts };
     return { ok, backupTs: backup.ts };
   }
 
