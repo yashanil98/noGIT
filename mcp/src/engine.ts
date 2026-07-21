@@ -795,6 +795,13 @@ export class SnapshotEngine {
   }
 
   private async copyInto(src: string, rel: string): Promise<boolean> {
+    // Verify source is a regular file (copyFile on a FIFO blocks forever)
+    try {
+      const srcSt = await fs.lstat(src);
+      if (!srcSt.isFile()) return false;
+    } catch {
+      return false;
+    }
     const dest = path.join(this.root, rel);
     if (!isInside(this.root, dest) || !(await isRealPathInside(this.root, dest))) return false;
     let existingMode: number | undefined;
