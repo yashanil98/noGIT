@@ -1205,8 +1205,8 @@ function buildHunks(edits: Edit[], oldLines: string[], newLines: string[], oldEn
     const slice = group.slice(start, end + 1);
 
     // Compute hunk header positions
-    const oldStart = slice[0].oldIdx + 1;
-    const newStart = slice[0].newIdx + 1;
+    let oldStart = slice[0].oldIdx + 1;
+    let newStart = slice[0].newIdx + 1;
     let oldCount = 0, newCount = 0;
     const lines: string[] = [];
     for (const e of slice) {
@@ -1234,6 +1234,11 @@ function buildHunks(edits: Edit[], oldLines: string[], newLines: string[], oldEn
           break;
       }
     }
+    // Unified-diff convention: when a side contributes zero lines, its
+    // start is the line BEFORE the change (0 when inserting at the top).
+    // patch(1) rejects hunks like "-1,0" on an empty file.
+    if (oldCount === 0) oldStart = slice[0].oldIdx;
+    if (newCount === 0) newStart = slice[0].newIdx;
     output.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
     output.push(...lines);
   }
