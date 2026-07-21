@@ -114,8 +114,11 @@ const engine = new SnapshotEngine({
   maxFileSizeBytes: parsed.maxFileSizeBytes,
 });
 
-function sanitizeLabel(label: string): string {
-  return label.replace(/[\n\r\t]/g, ' ');
+// Replace line-breaking control characters so a value stays on one line in
+// the line-oriented tool output. Applies to labels and file paths, both of
+// which can legally contain newlines/tabs (Unix filenames, arbitrary labels).
+function sanitizeForLine(s: string): string {
+  return s.replace(/[\n\r\t]/g, ' ');
 }
 
 // Truncate a string to at most `max` UTF-16 code units without splitting a
@@ -146,7 +149,7 @@ server.tool(
     const manualCount = snapshots.filter(s => s.label && !s.auto).length;
     const cp = await engine.latestCheckpoint();
     const lines = [`Workspace: ${root}`, `Snapshots: ${snapshots.length} (${manualCount} checkpoints, ${snapshots.length - manualCount} auto)`];
-    if (cp) lines.push(`Most recent checkpoint: ${cp.timestamp} [${sanitizeLabel(cp.label!)}] - ${cp.files.length} files`);
+    if (cp) lines.push(`Most recent checkpoint: ${cp.timestamp} [${sanitizeForLine(cp.label!)}] - ${cp.files.length} files`);
     else lines.push('No checkpoints yet.');
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   },
@@ -194,7 +197,7 @@ server.tool(
     const MAX_SHOW = 50;
     const shown = snapshots.slice(0, MAX_SHOW);
     const lines = shown.map(s => {
-      const label = s.label ? ` [${sanitizeLabel(s.label)}]` : '';
+      const label = s.label ? ` [${sanitizeForLine(s.label)}]` : '';
       const auto = s.auto ? ' (auto)' : '';
       return `${s.timestamp}${label}${auto} - ${s.files.length} files`;
     });
@@ -275,7 +278,7 @@ server.tool(
   async () => {
     const cp = await engine.latestCheckpoint();
     if (!cp) return { content: [{ type: 'text', text: 'No checkpoints found.' }] };
-    return { content: [{ type: 'text', text: `Most recent checkpoint: ${cp.timestamp} [${sanitizeLabel(cp.label!)}] - ${cp.files.length} files` }] };
+    return { content: [{ type: 'text', text: `Most recent checkpoint: ${cp.timestamp} [${sanitizeForLine(cp.label!)}] - ${cp.files.length} files` }] };
   },
 );
 
@@ -319,7 +322,7 @@ server.tool(
     const fmt = (list: string[], prefix: string, label: string) => {
       if (list.length === 0) return;
       const shown = list.slice(0, MAX_PER_CATEGORY);
-      lines.push(`${label} (${list.length}):\n${shown.map(f => '  ' + prefix + ' ' + f).join('\n')}`);
+      lines.push(`${label} (${list.length}):\n${shown.map(f => '  ' + prefix + ' ' + sanitizeForLine(f)).join('\n')}`);
       if (list.length > MAX_PER_CATEGORY) lines.push(`  ... and ${list.length - MAX_PER_CATEGORY} more`);
     };
     fmt(summary.modified, 'M', 'Modified');
@@ -356,7 +359,7 @@ server.tool(
     if (!files) return { content: [{ type: 'text', text: `Snapshot ${ts} not found or invalid.` }] };
     if (files.length === 0) return { content: [{ type: 'text', text: `Snapshot ${ts} contains no files.` }] };
     const MAX_SHOW = 200;
-    const shown = files.slice(0, MAX_SHOW);
+    const shown = files.slice(0, MAX_SHOW).map(sanitizeForLine);
     let text = `${files.length} files in ${ts}:\n${shown.join('\n')}`;
     if (files.length > MAX_SHOW) text += `\n... and ${files.length - MAX_SHOW} more (truncated)`;
     return { content: [{ type: 'text', text }] };
