@@ -660,6 +660,16 @@ export class SnapshotEngine {
       const snapPath = await this.resolveSnapshotPath(ts, rel);
       if (!snapPath) { modified.push(rel); continue; }
       const workspacePath = path.join(this.root, rel);
+      // Compare file sizes first. If they differ, the files are modified
+      // and we skip reading their contents entirely -- avoids loading two
+      // full copies of large files into memory just to prove inequality.
+      const [snapStat, curStat] = await Promise.all([
+        this.regularFileSize(snapPath),
+        this.regularFileSize(workspacePath),
+      ]);
+      if (snapStat === undefined || curStat === undefined) { modified.push(rel); continue; }
+      if (snapStat !== curStat) { modified.push(rel); continue; }
+      // Same size: read and compare bytes to confirm.
       const [snapBuf, curBuf] = await Promise.all([
         this.readRegularFile(snapPath),
         this.readRegularFile(workspacePath),
@@ -678,6 +688,17 @@ export class SnapshotEngine {
       const st = await fs.lstat(p);
       if (!st.isFile()) return undefined;
       return await fs.readFile(p);
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Size in bytes of a path only if it is a regular file, else undefined.
+  private async regularFileSize(p: string): Promise<number | undefined> {
+    try {
+      const st = await fs.lstat(p);
+      if (!st.isFile()) return undefined;
+      return st.size;
     } catch {
       return undefined;
     }
