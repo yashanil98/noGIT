@@ -159,7 +159,7 @@ If you drop noGIT into a project, AI agents that read AGENTS.md will automatical
 ```bash
 npm install && npm run build    # extension
 npm test                        # 128 unit tests
-cd mcp && npm install && npm run build && npm test   # MCP server (47 tests)
+cd mcp && npm install && npm run build && npm test   # MCP server (77 tests)
 ```
 
 ## License
