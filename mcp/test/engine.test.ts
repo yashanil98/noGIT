@@ -797,15 +797,21 @@ describe('SnapshotEngine', () => {
   it('startWatching honors a valid burst threshold', async () => {
     await writeFile(tmpDir, 'seed.txt', 'x');
     const engine = new SnapshotEngine({ root: tmpDir });
-    engine.startWatching({ quietMs: 100, burstMinFiles: 2 });
-    await writeFile(tmpDir, 'a.txt', '1');
-    await writeFile(tmpDir, 'b.txt', '2');
-    await writeFile(tmpDir, 'c.txt', '3');
-    // Poll for the burst rather than relying on a single fixed sleep, since
-    // fs.watch delivery timing is nondeterministic across platforms.
+    // Generous quiet window so events accumulate into one burst, and a low
+    // threshold. fs.watch on macOS can coalesce or delay events, so write
+    // well above the threshold with small gaps between writes to reliably
+    // deliver distinct change events, and re-touch files across polls until
+    // a burst is observed (or a long budget elapses).
+    engine.startWatching({ quietMs: 250, burstMinFiles: 2 });
     let bursts: SnapshotInfo[] = [];
-    for (let i = 0; i < 40 && bursts.length === 0; i++) {
-      await new Promise(r => setTimeout(r, 100));
+    for (let attempt = 0; attempt < 30 && bursts.length === 0; attempt++) {
+      // Touch several files with gaps so the watcher registers each event.
+      for (let f = 0; f < 5; f++) {
+        await writeFile(tmpDir, `f${f}.txt`, `v${attempt}-${f}`);
+        await new Promise(r => setTimeout(r, 20));
+      }
+      // Wait past the quiet window for the debounce to fire.
+      await new Promise(r => setTimeout(r, 400));
       bursts = (await engine.listSnapshots()).filter(s => s.auto);
     }
     engine.stopWatching();
