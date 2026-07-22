@@ -1194,14 +1194,32 @@ function countLines(s: string): number {
   return count + 1;
 }
 
-// Detect binary content by checking for null bytes in the first 8KB.
+// A shared strict UTF-8 decoder. `fatal: true` makes decode() throw on any
+// byte sequence that is not valid UTF-8, rather than silently substituting
+// U+FFFD. Reused across calls to avoid re-allocating per buffer.
+const strictUtf8Decoder = new TextDecoder('utf8', { fatal: true });
+
+// Detect content that must not be treated as UTF-8 text.
 function isBinaryBuffer(buf: Buffer): boolean {
   // A NUL byte anywhere marks the content as binary. Scan the whole buffer
   // (Buffer.indexOf is a fast native scan) rather than only the first 8KB,
   // so files with binary data past the first page are not mistaken for text
   // and returned/diffed with raw NUL bytes. Buffers are already bounded by
   // maxFileSizeBytes, so a full scan is cheap.
-  return buf.indexOf(0) !== -1;
+  if (buf.indexOf(0) !== -1) return true;
+  // Content with no NUL can still be invalid UTF-8 (Latin-1/Windows-1252 text,
+  // a truncated multi-byte sequence, UTF-16 without NULs in the sampled range,
+  // etc.). Decoding such bytes with toString('utf8') is lossy: every invalid
+  // byte collapses to U+FFFD, so a diff/read would not round-trip and, worse,
+  // two different invalid bytes (0xE9 vs 0xEA) both become U+FFFD and a real
+  // change is reported as no change. Treat anything that is not valid UTF-8 as
+  // binary so it goes through the byte-accurate path instead of a lossy decode.
+  try {
+    strictUtf8Decoder.decode(buf);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 // Unified diff with proper context hunks. Uses a simple O(n*m) LCS to find

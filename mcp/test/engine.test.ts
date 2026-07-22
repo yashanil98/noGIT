@@ -865,6 +865,42 @@ describe('SnapshotEngine', () => {
     assert.equal(await engine.readFile(ts, 'late-binary.dat'), undefined);
   });
 
+  it('treats invalid UTF-8 (no NUL) as binary so diffs stay byte-accurate', async () => {
+    // Latin-1 "caf<0xE9>" has no NUL byte, so a NUL-only binary check would treat
+    // it as text and decode it with toString('utf8'), which lossily collapses the
+    // 0xE9 byte to U+FFFD. That both breaks round-trip and, worse, makes two
+    // different invalid bytes compare equal. Changing 0xE9 to 0xEA is a real
+    // change that must NOT be reported as "no change".
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    // readFile must not return lossily-decoded content for invalid UTF-8.
+    assert.equal(await engine.readFile(ts, 'f.txt'), undefined);
+    // Change only the invalid byte (0xE9 -> 0xEA); still invalid UTF-8, no NUL.
+    await fs.writeFile(path.join(tmpDir, 'f.txt'), Buffer.from([0x63, 0x61, 0x66, 0xea, 0x0a]));
+    const diff = await engine.diff(ts, 'f.txt');
+    // The real change must be detected via the byte-accurate binary path, not
+    // silently swallowed by a lossy text decode.
+    assert.ok(diff && diff.includes('Binary file'),
+      `invalid-UTF-8 change must be reported as a binary diff, got: ${JSON.stringify(diff)}`);
+    assert.notEqual(diff, '', 'a real byte change must never be reported as no change');
+  });
+
+  it('still text-diffs valid multibyte UTF-8 (no false binary classification)', async () => {
+    // Guard against the invalid-UTF-8 fix over-classifying legitimate UTF-8
+    // (CJK, accented, emoji) as binary.
+    const engine = new SnapshotEngine({ root: tmpDir });
+    await fs.writeFile(path.join(tmpDir, 'g.txt'), Buffer.from('日本語 café 🎉\n', 'utf8'));
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    assert.equal(await engine.readFile(ts, 'g.txt'), '日本語 café 🎉\n');
+    await fs.writeFile(path.join(tmpDir, 'g.txt'), Buffer.from('日本語 CHANGED 🎉\n', 'utf8'));
+    const diff = await engine.diff(ts, 'g.txt');
+    assert.ok(diff && diff.includes('@@') && diff.includes('CHANGED'),
+      `valid UTF-8 must still produce a text diff, got: ${JSON.stringify(diff)}`);
+  });
+
   it('custom excludePatterns are respected', async () => {
     await writeFile(tmpDir, 'keep.txt', 'yes');
     await writeFile(tmpDir, 'logs/app.log', 'no');
