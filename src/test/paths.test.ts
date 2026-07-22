@@ -25,6 +25,17 @@ test('toWorkspaceRel rejects a sibling that merely shares the root prefix', () =
   assert.equal(toWorkspaceRel(ROOT, sibling), undefined);
 });
 
+test('toWorkspaceRel accepts filenames beginning with .. (not traversal)', () => {
+  // A root-level name that merely begins with two dots stays inside the root --
+  // it is NOT a "../" escape. A bare startsWith('..') check wrongly dropped such
+  // files from snapshots (silent data loss).
+  assert.equal(toWorkspaceRel(ROOT, J('..doubledot.txt')), '..doubledot.txt');
+  assert.equal(toWorkspaceRel(ROOT, J('...tripledot')), '...tripledot');
+  assert.equal(toWorkspaceRel(ROOT, J('sub', '..hidden')), 'sub/..hidden');
+  // Genuine traversals are still rejected.
+  assert.equal(toWorkspaceRel(ROOT, J('..', 'secret')), undefined);
+});
+
 test('isInside accepts the root and nested paths, rejects escapes', () => {
   assert.equal(isInside(ROOT, J('a', 'b.txt')), true);
   assert.equal(isInside(ROOT, ROOT), true);
