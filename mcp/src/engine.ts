@@ -39,15 +39,24 @@ function matchesAny(patterns: string[], relPath: string): boolean {
 }
 
 // --- paths.ts (verbatim logic) ---
+// A relative path escapes `root` only when it is exactly ".." or begins with a
+// ".." path segment (".." followed by a separator), or is absolute. A bare
+// startsWith('..') check is wrong: it also rejects legitimate filenames that
+// merely begin with two dots, such as "..doubledot.txt" or "...tripledot",
+// which stay inside the root -- silently dropping them from snapshots.
+function escapesRoot(rel: string): boolean {
+  return rel === '..' || rel.startsWith('..' + path.sep) || rel.startsWith('../') || path.isAbsolute(rel);
+}
+
 function toWorkspaceRel(root: string, absPath: string): string | undefined {
   const rel = path.relative(root, absPath);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
+  if (rel === '' || escapesRoot(rel)) return undefined;
   return rel.split(path.sep).join(path.posix.sep);
 }
 
 function isInside(root: string, child: string): boolean {
   const rel = path.relative(root, child);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || !escapesRoot(rel);
 }
 
 function isWithinSnapshotFolder(rel: string, folderName: string): boolean {

@@ -323,6 +323,33 @@ describe('SnapshotEngine', () => {
     assert.equal(await readFile(tmpDir, weird), 'backslash-content');
   });
 
+  it('captures files whose names begin with .. (not treated as traversal)', async () => {
+    // A root-level filename that merely begins with two dots (..doubledot.txt,
+    // ...tripledot) stays inside the workspace -- it is NOT a "../" traversal.
+    // A bare startsWith('..') check wrongly excluded such files from snapshots,
+    // silently dropping them (data loss by omission). They must be captured,
+    // read, and restored like any other file.
+    await fs.writeFile(path.join(tmpDir, '..doubledot.txt'), 'A');
+    await fs.writeFile(path.join(tmpDir, '...tripledot'), 'B');
+    await fs.writeFile(path.join(tmpDir, 'normal.txt'), 'N');
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const { ts } = await engine.checkpoint('cp');
+    assert.ok(ts);
+    const files = await engine.getSnapshotFiles(ts);
+    assert.ok(files!.includes('..doubledot.txt'), `..doubledot.txt must be captured, got: ${JSON.stringify(files)}`);
+    assert.ok(files!.includes('...tripledot'), `...tripledot must be captured, got: ${JSON.stringify(files)}`);
+    // Read and restore round-trip.
+    assert.equal(await engine.readFile(ts, '..doubledot.txt'), 'A');
+    await fs.writeFile(path.join(tmpDir, '..doubledot.txt'), 'MODIFIED');
+    const r = await engine.restoreFile(ts, '..doubledot.txt');
+    assert.equal(r.ok, true);
+    assert.equal(await readFile(tmpDir, '..doubledot.txt'), 'A');
+    // Real traversal is still rejected (the fix must not weaken the guard).
+    assert.equal((await engine.restoreFile(ts, '../escape.txt')).ok, false);
+    assert.equal((await engine.restoreFile(ts, '..')).ok, false);
+    assert.equal(await engine.readFile(ts, '../../etc/hostname'), undefined);
+  });
+
   it('rejects path traversal in restoreFile', async () => {
     await writeFile(tmpDir, 'a.txt', 'safe');
     const engine = new SnapshotEngine({ root: tmpDir });
