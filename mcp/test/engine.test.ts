@@ -646,6 +646,47 @@ describe('SnapshotEngine', () => {
     assert.ok(undo, 'undo should work because backup is protected from pruning');
   });
 
+  it('does not throw a raw error when the store is removed mid-snapshot', async () => {
+    // The .nogit store is a plain gitignored folder an external actor (cleanup
+    // script, git clean, the user) can remove at any time. If it vanishes between
+    // the file copy and the manifest write, the snapshot must fail gracefully
+    // (return no timestamp), not throw a raw ENOENT that surfaces as an opaque
+    // "Internal error". Hammer a checkpoint while aggressively deleting the store.
+    const fsSync = await import('node:fs');
+    for (let i = 0; i < 60; i++) await writeFile(tmpDir, `f${i}.txt`, `content-${i}`);
+    const engine = new SnapshotEngine({ root: tmpDir });
+    const snapRoot = path.join(tmpDir, '.nogit', 'snapshots');
+    let stop = false;
+    const deleter = (async () => {
+      while (!stop) {
+        try {
+          if (fsSync.existsSync(snapRoot)) {
+            for (const d of fsSync.readdirSync(snapRoot)) {
+              if (/^\d{8}-\d{6}/.test(d)) fsSync.rmSync(path.join(snapRoot, d), { recursive: true, force: true });
+            }
+          }
+        } catch { /* ignore */ }
+        await new Promise(r => setImmediate(r));
+      }
+    })();
+    // Retry many times so the copy-vs-delete window is hit with near-certainty;
+    // any single raw throw fails the test. On correct code every attempt returns
+    // a result (valid or undefined ts), so this stays fast and non-flaky.
+    let threw = false;
+    for (let i = 0; i < 30 && !threw; i++) {
+      try {
+        const result = await engine.checkpoint('cp');
+        assert.ok(result !== undefined, 'checkpoint must return a result, not reject');
+      } catch {
+        threw = true;
+      }
+      await writeFile(tmpDir, `extra${i}.txt`, `v${i}`);
+    }
+    stop = true;
+    await deleter;
+    assert.equal(threw, false, 'checkpoint must not throw a raw error when the store is deleted mid-write');
+  });
+
   it('skips files over maxFileSizeBytes', async () => {
     await writeFile(tmpDir, 'small.txt', 'hi');
     await writeFile(tmpDir, 'big.txt', 'x'.repeat(200));

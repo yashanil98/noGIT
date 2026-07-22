@@ -482,8 +482,19 @@ export class SnapshotEngine {
     if (auto) manifest.auto = true;
     const metaPath = path.join(snapDir, 'meta.json');
     const tmpPath = path.join(snapDir, 'meta.json.tmp');
-    await fs.writeFile(tmpPath, JSON.stringify(manifest, null, 2), 'utf8');
-    await fs.rename(tmpPath, metaPath);
+    // Writing the manifest can fail if the snapshot directory disappears between
+    // the copy and this write -- e.g. an external process (another tool, a
+    // cleanup script, git clean, the user) removed the .nogit store, since it is
+    // a plain gitignored folder. Treat that like the "nothing captured" case:
+    // clean up any remnant and report no snapshot, rather than throwing a raw
+    // ENOENT that surfaces as an opaque "Internal error" to the caller.
+    try {
+      await fs.writeFile(tmpPath, JSON.stringify(manifest, null, 2), 'utf8');
+      await fs.rename(tmpPath, metaPath);
+    } catch {
+      await fs.rm(snapDir, { recursive: true, force: true }).catch(() => {});
+      return { ts: undefined, files: [] };
+    }
 
     return { ts, files: copied };
   }
